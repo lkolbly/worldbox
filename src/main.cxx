@@ -4,6 +4,7 @@
 #include<cerrno>
 #include<include/v8.h>
 #include<include/libplatform/libplatform.h>
+#include<bullet/btBulletDynamicsCommon.h>
 
 #include "vec3.hxx"
 #include "entity.hxx"
@@ -14,6 +15,8 @@ std::string readFile(const char *pathname);
 
 v8::Handle<v8::ObjectTemplate> curglobal;
 Local<Context> curcontext;
+
+btDiscreteDynamicsWorld *physics_world;
 
 class Entity;
 
@@ -81,6 +84,24 @@ void SpawnEntity(const char *filename, Isolate *isolate) {
 
   // Setup the entity...
   Entity *entity = new Entity();
+
+  // Setup the physics object for it...
+  btBoxShape *shape = new btBoxShape(btVector3(1,1,1));
+  btTransform transform;
+  transform.setIdentity();
+  transform.setOrigin(btVector3(0,3,0));
+  btVector3 localInertia(0,0,0);
+  double mass = 1.0;
+  shape->calculateLocalInertia(mass,localInertia);
+  btDefaultMotionState *motionstate = new btDefaultMotionState(transform);
+  btRigidBody::btRigidBodyConstructionInfo rbInfo(mass,motionstate,shape,localInertia);
+  rbInfo.m_friction = 0.01;
+  btRigidBody *body = new btRigidBody(rbInfo);
+  printf("We have rigid body: %p\n",body);
+  entity->_rigidBody = body;
+  physics_world->addRigidBody(body);
+
+  // Add it to the ESC
   esc->entity = entity;
   Handle<Object> v8entity = Entity::Wrap(entity, isolate);
   esc->v8entity.Reset(isolate,v8entity);
@@ -126,13 +147,37 @@ int main(int argc, char **argv)
   V8::InitializePlatform(platform);
   V8::Initialize();
 
+  // Initialize Bullet
+  btDefaultCollisionConfiguration *collisionConfig = new btDefaultCollisionConfiguration();
+  btCollisionDispatcher *dispatcher = new btCollisionDispatcher(collisionConfig);
+  btBroadphaseInterface *pairCache = new btDbvtBroadphase();
+  btSequentialImpulseConstraintSolver *solver = new btSequentialImpulseConstraintSolver();
+  physics_world = new btDiscreteDynamicsWorld(dispatcher, pairCache, solver, collisionConfig);
+  physics_world->setGravity(btVector3(0,-10,0));
+
+  // Create the ground...
+  {
+    btBoxShape *shape = new btBoxShape(btVector3(50,50,50));
+    btTransform transform;
+    transform.setIdentity();
+    transform.setOrigin(btVector3(0,-50,0));
+    btVector3 localInertia(0,0,0);
+    double mass = 0.0; // Massless...
+    //shape->calculateLocalInertia(mass,localInertia)
+    btDefaultMotionState *motionstate = new btDefaultMotionState(transform);
+    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass,motionstate,shape,localInertia);
+    rbInfo.m_friction = 1.0;
+    btRigidBody *body = new btRigidBody(rbInfo);
+    physics_world->addRigidBody(body);
+  }
+
   // Create a new Isolate and make it the current one.
   Isolate* isolate = Isolate::New();
 
   {
     Isolate::Scope isolate_scope(isolate);
 
-    SpawnEntity("test.js", isolate);
+    //SpawnEntity("test.js", isolate);
     SpawnEntity("test2.js", isolate);
 
     // Run the game loop
@@ -157,12 +202,18 @@ int main(int argc, char **argv)
 	}
       }
 
+      // Update the physics...
+      double timestep = 0.25;
+      physics_world->stepSimulation(timestep, 100, 1.0/100.0);
+
       if (esc_List.size() == 0) break;
       printf("Going around game loop again, %i ESC elements.\n", esc_List.size());
     }
   }
 
   printf("Exiting...\n");
+
+  // Delete all the physics stuff...
 
   // Dispose the isolate and tear down V8.
   isolate->Dispose();

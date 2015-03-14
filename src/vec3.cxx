@@ -1,10 +1,23 @@
 #include<string>
 #include<string.h>
 #include<include/v8.h>
+#include<bullet/btBulletDynamicsCommon.h>
 
 #include "vec3.hxx"
 
 using namespace v8;
+
+void Vec3::Set(btVector3 v)
+{
+  SetXYZ(double(v.getX()), double(v.getY()), double(v.getZ()));
+}
+
+void Vec3::SetXYZ(double x, double y, double z)
+{
+  _x = x;
+  _y = y;
+  _z = z;
+}
 
 void Vec3::GetXYZ(Local<Name> name, const PropertyCallbackInfo<Value>& info)
 {
@@ -28,6 +41,8 @@ void Vec3::GetXYZ(Local<Name> name, const PropertyCallbackInfo<Value>& info)
 
 void Vec3::SetXYZ(Local<Name> name, Local<Value> newval, const PropertyCallbackInfo<void>& info)
 {
+  // What does this even mean? We'd have to push the new location to physics.
+
   // Unwrap the vector
   Handle<External> field = Handle<External>::Cast(info.Holder()->GetInternalField(0));
   Vec3 *v = (Vec3*)field->Value();
@@ -44,6 +59,21 @@ void Vec3::SetXYZ(Local<Name> name, Local<Value> newval, const PropertyCallbackI
   }
 }
 
+void Vec3::ToString(const FunctionCallbackInfo<Value>& args) {
+  // Unwrap the vector
+  Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
+  Vec3 *v = (Vec3*)field->Value();
+
+  // Build a string...
+  char *buf = new char[128];
+  snprintf(buf, 128, "{x: %f, y: %f, z: %f}", v->_x, v->_y, v->_z);
+  args.GetReturnValue().Set(String::NewFromUtf8(args.GetIsolate(), buf));
+}
+
+void Vec3::ToStringAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Vec3::ToString)->GetFunction());
+}
+
 Handle<ObjectTemplate> Vec3::MakeTemplate(Isolate *isolate)
 {
   EscapableHandleScope handle_scope(isolate);
@@ -52,6 +82,7 @@ Handle<ObjectTemplate> Vec3::MakeTemplate(Isolate *isolate)
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "x", String::kInternalizedString), GetXYZ, SetXYZ);
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "y", String::kInternalizedString), GetXYZ, SetXYZ);
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "z", String::kInternalizedString), GetXYZ, SetXYZ);
+  jsentity->SetAccessor(String::NewFromUtf8(isolate, "toString", String::kInternalizedString), ToStringAccessor);
   return handle_scope.Escape(jsentity);
 }
 
