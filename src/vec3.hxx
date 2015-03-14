@@ -1,0 +1,20 @@
+#ifndef VEC3_HXX
+#define VEC3_HXX 1
+
+#include<include/v8.h>
+
+class Vec3 {
+private:
+  double _x, _y, _z;
+
+public:
+  static v8::Handle<v8::ObjectTemplate> MakeTemplate(v8::Isolate *isolate);
+  static v8::Handle<v8::Object> Wrap(Vec3 *v, v8::Isolate *isolate);
+
+  static void GetXYZ(v8::Local<v8::Name> name,
+		     const v8::PropertyCallbackInfo<v8::Value>& info);
+  static void SetXYZ(v8::Local<v8::Name> name, v8::Local<v8::Value> newval,
+		     const v8::PropertyCallbackInfo<void>& info);
+};
+
+#endif
