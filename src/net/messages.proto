@@ -1,0 +1,24 @@
+package worldbox;
+
+// Message type 0x00 01
+// c->s: Sent on connection.
+// s->c: Sent to acknowledge connection & welcome client.
+message Hello {
+  required int32 version = 1;
+}
+
+// Message type 0x01 01
+// c->s: Broadcast string message to channel.
+// s->c: Message was broadcasted, and we were subscribed to that channel.
+// If channel is not specified, then the message is broadcast everywhere.
+message MsgBroadcast {
+  optional string channel = 1;
+  required string msg = 2;
+}
+
+// Message type 0x01 02
+// c->s: Subscribe (or unsubscribe) the client from the given message channel
+message MsgSubscribe {
+  required string channel = 1;
+  optional bool unsubscribe = 2 [default = false];
+}

@@ -1,21 +1,57 @@
 #include<string>
-#include<vector>
+//#include<vector>
 #include<include/v8.h>
 #include<bullet/btBulletDynamicsCommon.h>
 
 #include "entity.hxx"
+#include "messaging.hxx"
 
 using namespace v8;
 
 // Note: We assume we're all under the same isolate
-class MessageSubscriber {
+class EntityMessageSubscriber {
 public:
   Entity *entity;
   Persistent<Function> callback;
-  std::string channel_name;
+  //std::string channel_name;
 };
 
+#if 0
 std::vector<MessageSubscriber*> message_Subscribers;
+
+void BroadcastMessage(Isolate *isolate, std::string channel, Handle<Value> message) {
+  for (std::vector<MessageSubscriber*>::iterator it=message_Subscribers.begin(); it!=message_Subscribers.end(); ++it) {
+    MessageSubscriber *sub = *it;
+    if (sub->channel_name.compare(channel) == 0 || channel.compare("") == 0) {
+      // Pass along the message
+      // Note: The callback cannot modify the message.
+      printf("Sending a message...\n");
+      HandleScope handle_scope(isolate);
+      Handle<Value> fnargs[1];
+      fnargs[0] = message;
+      Local<Function> fn = Local<Function>::New(isolate, sub->callback);
+      Local<Context> ctx = Local<Context>::New(isolate, sub->entity->context);
+
+      fn->Call(ctx->Global(), 1, fnargs);
+    }
+  }
+}
+#endif
+
+void Entity::ReceiveMessage(void *userdata, std::string channel, Handle<Value> message)
+{
+  // Pass along the message
+  // Note: The callback cannot modify the message.
+  EntityMessageSubscriber *sub = (EntityMessageSubscriber*)userdata;
+  printf("Sending a message...\n");
+  HandleScope handle_scope(Isolate::GetCurrent());
+  Handle<Value> fnargs[1];
+  fnargs[0] = message;
+  Local<Function> fn = Local<Function>::New(Isolate::GetCurrent(), sub->callback);
+  Local<Context> ctx = Local<Context>::New(Isolate::GetCurrent(), sub->entity->context);
+
+  fn->Call(ctx->Global(), 1, fnargs);
+}
 
 Handle<Object> Entity::Wrap(Entity *entity, Isolate *isolate) {
   EscapableHandleScope handle_scope(isolate);
@@ -99,23 +135,34 @@ void Entity::MsgSubscribe(const FunctionCallbackInfo<Value>& args) {
   Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
   Entity *centity = (Entity*)field->Value();
 
-  // Subscribe the given function to the given channel
-  MessageSubscriber *subscriber = new MessageSubscriber();
-  subscriber->channel_name = *String::Utf8Value(args[0]);
-  subscriber->entity = centity;
+  EntityMessageSubscriber *e_sub = new EntityMessageSubscriber();
+  e_sub->entity = centity;
 
   Handle<Function> localhandle = Handle<Function>::Cast(args[1]);
-  subscriber->callback.Reset(args.GetIsolate(), localhandle);
-  message_Subscribers.push_back(subscriber);
+  e_sub->callback.Reset(args.GetIsolate(), localhandle);
+
+  // Subscribe the given function to the given channel
+  MessageSubscriber subscriber;// = new MessageSubscriber();
+  subscriber.channel_name = *String::Utf8Value(args[0]);
+  subscriber._userdata = e_sub;
+  subscriber._cb = Entity::ReceiveMessage;
+
+  //message_Subscribers.push_back(subscriber);
+  MsgAddSubscriber(subscriber);
 }
 
-void Entity::MsgBroadcast(const FunctionCallbackInfo<Value>& args) {
+void Entity::MsgBroadcast2(const FunctionCallbackInfo<Value>& args) {
   // Unwrap the entity
   Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
   Entity *centity = (Entity*)field->Value();
 
   std::string channel_name = *String::Utf8Value(args[0]);
 
+  //BroadcastMessage(Isolate *isolate, std::string channel, Handle<Value> message) {
+  //BroadcastMessage(args.GetIsolate(), channel_name, args[1]);
+  MsgBroadcast(channel_name, args[1]);
+
+#if 0
   for (std::vector<MessageSubscriber*>::iterator it=message_Subscribers.begin(); it!=message_Subscribers.end(); ++it) {
     MessageSubscriber *sub = *it;
     if (sub->channel_name.compare(channel_name) == 0) {
@@ -131,6 +178,7 @@ void Entity::MsgBroadcast(const FunctionCallbackInfo<Value>& args) {
       fn->Call(ctx->Global(), 1, fnargs);
     }
   }
+#endif
 }
 
 void Entity::SetCallbackAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
@@ -191,7 +239,7 @@ void Entity::MsgSubscribeAccessor(Local<Name> name, const PropertyCallbackInfo<V
 }
 
 void Entity::MsgBroadcastAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
-  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::MsgBroadcast)->GetFunction());
+  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::MsgBroadcast2)->GetFunction());
 }
 
 // Makes an entity, given these arguments

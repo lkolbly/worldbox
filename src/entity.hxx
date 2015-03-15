@@ -21,8 +21,9 @@ public:
   static v8::Handle<v8::Object> Wrap(Entity *entity, v8::Isolate *isolate);
   static void MsgSubscribe(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void MsgSubscribeAccessor(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info);
-  static void MsgBroadcast(const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void MsgBroadcast2(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void MsgBroadcastAccessor(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info);
+  static void ReceiveMessage(void *userdata, std::string channel, v8::Handle<v8::Value> message);
 
   int _value;
   bool _toremove;
@@ -37,5 +38,7 @@ public:
   v8::Handle<v8::ObjectTemplate> global;
   v8::Persistent<v8::Context> context;
 };
+
+void BroadcastMessage(v8::Isolate *isolate, std::string channel, v8::Handle<v8::Value> message);
 
 #endif
