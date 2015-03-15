@@ -1,9 +1,21 @@
+#include<string>
+#include<vector>
 #include<include/v8.h>
 #include<bullet/btBulletDynamicsCommon.h>
 
 #include "entity.hxx"
 
 using namespace v8;
+
+// Note: We assume we're all under the same isolate
+class MessageSubscriber {
+public:
+  Entity *entity;
+  Persistent<Function> callback;
+  std::string channel_name;
+};
+
+std::vector<MessageSubscriber*> message_Subscribers;
 
 Handle<Object> Entity::Wrap(Entity *entity, Isolate *isolate) {
   EscapableHandleScope handle_scope(isolate);
@@ -82,6 +94,45 @@ void Entity::GetValue(Local<Name> name, const PropertyCallbackInfo<Value>& info)
   info.GetReturnValue().Set(Integer::New(info.GetIsolate(), centity->_value));
 }
 
+void Entity::MsgSubscribe(const FunctionCallbackInfo<Value>& args) {
+  // Unwrap the entity
+  Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
+  Entity *centity = (Entity*)field->Value();
+
+  // Subscribe the given function to the given channel
+  MessageSubscriber *subscriber = new MessageSubscriber();
+  subscriber->channel_name = *String::Utf8Value(args[0]);
+  subscriber->entity = centity;
+
+  Handle<Function> localhandle = Handle<Function>::Cast(args[1]);
+  subscriber->callback.Reset(args.GetIsolate(), localhandle);
+  message_Subscribers.push_back(subscriber);
+}
+
+void Entity::MsgBroadcast(const FunctionCallbackInfo<Value>& args) {
+  // Unwrap the entity
+  Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
+  Entity *centity = (Entity*)field->Value();
+
+  std::string channel_name = *String::Utf8Value(args[0]);
+
+  for (std::vector<MessageSubscriber*>::iterator it=message_Subscribers.begin(); it!=message_Subscribers.end(); ++it) {
+    MessageSubscriber *sub = *it;
+    if (sub->channel_name.compare(channel_name) == 0) {
+      // Pass along the message
+      // Note: The callback cannot modify the message.
+      printf("Sending a message...\n");
+      HandleScope handle_scope(args.GetIsolate());
+      Handle<Value> fnargs[1];
+      fnargs[0] = args[1];
+      Local<Function> fn = Local<Function>::New(args.GetIsolate(), sub->callback);
+      Local<Context> ctx = Local<Context>::New(args.GetIsolate(), sub->entity->context);
+
+      fn->Call(ctx->Global(), 1, fnargs);
+    }
+  }
+}
+
 void Entity::SetCallbackAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
   // Unwrap the entity
   Handle<External> field = Handle<External>::Cast(info.Holder()->GetInternalField(0));
@@ -135,6 +186,14 @@ void Entity::ApplyForceAccessor(Local<Name> name, const PropertyCallbackInfo<Val
   info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::ApplyForce)->GetFunction());
 }
 
+void Entity::MsgSubscribeAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::MsgSubscribe)->GetFunction());
+}
+
+void Entity::MsgBroadcastAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::MsgBroadcast)->GetFunction());
+}
+
 // Makes an entity, given these arguments
 Handle<ObjectTemplate> Entity::MakeEntityTemplate(Isolate *isolate) {
   EscapableHandleScope handle_scope(isolate);
@@ -149,6 +208,8 @@ Handle<ObjectTemplate> Entity::MakeEntityTemplate(Isolate *isolate) {
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "rotation", String::kInternalizedString), PositionAccessor);
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "rotvel", String::kInternalizedString), PositionAccessor);
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "applyForce", String::kInternalizedString), ApplyForceAccessor);
+  jsentity->SetAccessor(String::NewFromUtf8(isolate, "subscribe", String::kInternalizedString), MsgSubscribeAccessor);
+  jsentity->SetAccessor(String::NewFromUtf8(isolate, "broadcast", String::kInternalizedString), MsgBroadcastAccessor);
 
   return handle_scope.Escape(jsentity);
 }

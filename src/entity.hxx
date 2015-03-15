@@ -19,6 +19,10 @@ public:
   static void PositionAccessor(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info);
   static void SetCallback(const v8::FunctionCallbackInfo<v8::Value>& args);
   static v8::Handle<v8::Object> Wrap(Entity *entity, v8::Isolate *isolate);
+  static void MsgSubscribe(const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void MsgSubscribeAccessor(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info);
+  static void MsgBroadcast(const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void MsgBroadcastAccessor(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info);
 
   int _value;
   bool _toremove;
@@ -28,6 +32,10 @@ public:
 
   // Physics properties
   btRigidBody *_rigidBody;
+
+  // v8 properties
+  v8::Handle<v8::ObjectTemplate> global;
+  v8::Persistent<v8::Context> context;
 };
 
 #endif

@@ -22,8 +22,8 @@ class Entity;
 
 class EntitySpawnContext {
 public:
-  Handle<ObjectTemplate> global;
-  Persistent<Context> context;
+  //Handle<ObjectTemplate> global;
+  //Persistent<Context> context;
 
   Entity *entity;
   Persistent<Object> v8entity;
@@ -66,24 +66,25 @@ void SpawnEntity(const char *filename, Isolate *isolate) {
 
   printf("Creating an esc...\n");
   EntitySpawnContext *esc = new EntitySpawnContext();
+  Entity *entity = new Entity();
+  esc->entity = entity;
 
   // Setup a global context (with print...)
   printf("Setting up a global entity...\n");
-  esc->global = v8::ObjectTemplate::New(isolate);
-  esc->global->Set(v8::String::NewFromUtf8(isolate, "print"),
-		   v8::FunctionTemplate::New(isolate, Print));
-  esc->global->SetAccessor(v8::String::NewFromUtf8(isolate, "entity"),
-			   globalEntityGetter);
+  entity->global = v8::ObjectTemplate::New(isolate);
+  entity->global->Set(v8::String::NewFromUtf8(isolate, "print"),
+		      v8::FunctionTemplate::New(isolate, Print));
+  entity->global->SetAccessor(v8::String::NewFromUtf8(isolate, "entity"),
+			      globalEntityGetter);
 
   // Create a new context.
-  Handle<Context> context = Context::New(isolate, NULL, esc->global);
-  esc->context.Reset(isolate,context);
+  Handle<Context> context = Context::New(isolate, NULL, entity->global);
+  entity->context.Reset(isolate,context);
 
   // Enter the context for compiling and running the hello world script.
   Context::Scope context_scope(context);
 
   // Setup the entity...
-  Entity *entity = new Entity();
 
   // Setup the physics object for it...
   btBoxShape *shape = new btBoxShape(btVector3(1,1,1));
@@ -102,9 +103,16 @@ void SpawnEntity(const char *filename, Isolate *isolate) {
   physics_world->addRigidBody(body);
 
   // Add it to the ESC
-  esc->entity = entity;
+  //esc->entity = entity;
   Handle<Object> v8entity = Entity::Wrap(entity, isolate);
   esc->v8entity.Reset(isolate,v8entity);
+
+  // Run the stdlib
+  {
+    Local<String> source = String::NewFromUtf8(isolate, readFile("stdlib.js").c_str());
+    Local<Script> script = Script::Compile(source);
+    Local<Value> result = script->Run();
+  }
 
   // Create a string containing the JavaScript source code.
   Local<String> source = String::NewFromUtf8(isolate, readFile(filename).c_str());
@@ -153,7 +161,7 @@ int main(int argc, char **argv)
   btBroadphaseInterface *pairCache = new btDbvtBroadphase();
   btSequentialImpulseConstraintSolver *solver = new btSequentialImpulseConstraintSolver();
   physics_world = new btDiscreteDynamicsWorld(dispatcher, pairCache, solver, collisionConfig);
-  physics_world->setGravity(btVector3(0,-10,0));
+  physics_world->setGravity(btVector3(0,0,0));
 
   // Create the ground...
   {
@@ -177,7 +185,7 @@ int main(int argc, char **argv)
   {
     Isolate::Scope isolate_scope(isolate);
 
-    //SpawnEntity("test.js", isolate);
+    SpawnEntity("test.js", isolate);
     SpawnEntity("test2.js", isolate);
 
     // Run the game loop
@@ -187,9 +195,9 @@ int main(int argc, char **argv)
 	HandleScope handle_scope(isolate);
 	Handle<Value> fnargs[1];
 	//fnargs[0] = esc->v8entity;//entity;
-	fnargs[0] = Integer::New(isolate, 123);
+	fnargs[0] = Number::New(isolate, 0.25);
 	Local<Function> fn = Local<Function>::New(isolate, curesc->entity->functions["update"]);
-	Local<Context> ctx = Local<Context>::New(isolate, curesc->context);
+	Local<Context> ctx = Local<Context>::New(isolate, curesc->entity->context);
 
 	fn->Call(ctx->Global(), 1, fnargs);
 
