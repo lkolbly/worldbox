@@ -66,9 +66,8 @@ void globalEntityGetter(Local<String> property, const PropertyCallbackInfo<Value
 
 // filename is the filename of the JS file that runs the entity
 // Each entity JS script is run in a different context so they don't interfere
-void SpawnEntity(const char *filename, Vec3 position, Isolate *isolate) {
+void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   // Parse the JSON file, figure out what we need to figure out
-  std::string config_str = readFile(filename);
   rapidjson::Document config_doc;
   config_doc.Parse(config_str.c_str());
 
@@ -182,15 +181,35 @@ public:
   static void MessageReceiver(void *userdata, std::string channel, Handle<Value> message);
 };
 
+std::string jsonStringify(Handle<Value> message) {
+  // Create a new context for this (hrm, probably expensive...)
+  Local<Context> context = Context::New(Isolate::GetCurrent());
+  Context::Scope context_scope(context);
+
+  Local<String> source = String::NewFromUtf8(Isolate::GetCurrent(), "function tmp(obj) { return JSON.stringify(obj); }");
+  Local<Script> script = Script::Compile(source);
+  script->Run();
+
+  Handle<Object> global = context->Global();
+  Handle<Value> fn_val = global->Get(String::NewFromUtf8(Isolate::GetCurrent(), "tmp"));
+  Handle<Function> fn = Handle<Function>::Cast(fn_val);
+  Handle<Value> args[1];
+  args[0] = message;
+  Handle<Value> result = fn->Call(global, 1, args);
+
+  String::Utf8Value str(result);
+  return *str;
+}
+
 void NetClient::MessageReceiver(void *userdata, std::string channel, v8::Handle<v8::Value> message) {
   NetClient *client = (NetClient*)userdata;
   if (!client->_is_open) return;
 
-  // Convert message to a string, then send it...
-  String::Utf8Value utf8(message);
+  // JSON stringify the message, then send it...
+  std::string msg_str = jsonStringify(message);
 
   worldbox::MsgBroadcast msg;
-  msg.set_msg(*utf8);
+  msg.set_json(msg_str);
   std::string str;
   msg.SerializeToString(&str);
 
@@ -256,7 +275,7 @@ void NetClient::update()
       worldbox::MsgBroadcast msg;
       msg.ParseFromString(buf);
       HandleScope handle_scope(Isolate::GetCurrent());
-      MsgBroadcast(msg.channel(), String::NewFromUtf8(Isolate::GetCurrent(),msg.msg().c_str()));
+      MsgBroadcast(msg.channel(), String::NewFromUtf8(Isolate::GetCurrent(),msg.json().c_str()));
     } else if (msgtype == 0x0102) {
       // MsgSubscribe
       worldbox::MsgSubscribe msg;
@@ -282,7 +301,14 @@ void NetClient::update()
 		   msg.start_position().y(),
 		   msg.start_position().z());
       }
-      SpawnEntity(msg.type().c_str(), pos, Isolate::GetCurrent());
+      std::string config_str;
+      if (msg.has_cfg_filename()) {
+	config_str = readFile(msg.cfg_filename().c_str());
+      }
+      if (msg.has_cfg_json()) {
+	config_str = msg.cfg_json();
+      }
+      SpawnEntity(config_str, pos, Isolate::GetCurrent());
     }
 
     delete buf;

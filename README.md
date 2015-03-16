@@ -13,14 +13,14 @@ Requirements are:
 - v8 (the JavaScript engine)
 - Bullet Physics
 - rapidjson
-- Protobuf
+- Protobuf (version 2.6.0)
 - Make, g++, etc.
 
 On Ubuntu, you can install bullet through apt-get. V8 is harder to install - I followed the instructions at https://code.google.com/p/v8-wiki/wiki/UsingGit and https://code.google.com/p/v8-wiki/wiki/BuildingWithGYP
 
 Rapidjson is fairly straight forward, it can be obtained from https://github.com/miloyip/rapidjson
 
-Protobuf can be installed through apt-get on ubuntu.
+Protobuf can be installed through apt-get on ubuntu, but that gives you an old version. To get the latest either use Vervet or compile from source.
 
 You may need to edit src/Makefile to match your setup. V8ROOT is where I had my V8 source tree.
 

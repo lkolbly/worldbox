@@ -1,7 +1,7 @@
 package worldbox;
 
 //
-// Message category 0: Paperwork. (stats, auth, etc.)
+// Message category 0: Paperwork. (stats, auth, settings, etc.)
 //
 
 // Message type 0x00 01
@@ -21,7 +21,7 @@ message Hello {
 // If channel is not specified, then the message is broadcast everywhere.
 message MsgBroadcast {
   optional string channel = 1;
-  required string msg = 2;
+  required string json = 2;
 }
 
 // Message type 0x01 02
@@ -44,6 +44,9 @@ message Vec3 {
 // Message type 0x02 01
 // c->s: Request that a new entity be spawned.
 message SpawnEntity {
-  required string type = 1;
-  optional Vec3 start_position = 2;
+  oneof oneof_config {
+    string cfg_filename = 1; // The filename of a JSON file
+    string cfg_json = 2; // An actual JSON string
+  }
+  optional Vec3 start_position = 3;
 }

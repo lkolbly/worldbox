@@ -38,12 +38,12 @@ sendMessage(0x0102, msg)
 
 msg = messages_pb2.MsgBroadcast()
 msg.channel = "test_msgs"
-msg.msg = "Message from a client!"
+msg.json = "Message from a client!"
 sendMessage(0x0101, msg)
 
 # Spawn an entity to play with
 msg = messages_pb2.SpawnEntity()
-msg.type = "test2.json"
+msg.cfg_filename = "test2.json"
 #msg.start_position = messages_pb2.Vec3()
 msg.start_position.x = random.random()*20.0-10.0
 msg.start_position.y = random.random()*20.0-10.0
@@ -65,6 +65,6 @@ while 1:
     if msg_type == 0x0101:
         msg = messages_pb2.MsgBroadcast()
         msg.ParseFromString(body)
-        print "Got message: %s"%msg.msg
+        print "Got message: %s"%msg.json
 
 s.close()
