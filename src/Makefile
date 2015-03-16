@@ -11,7 +11,7 @@ proto:
 	make -C net/
 
 %.o: %.cxx
-	g++ -c -g -Wall -O0 -std=c++0x -I/usr/include/bullet/ -I$(V8ROOT) $< -o $@
+	g++ -c -g -Wall -O0 -std=c++0x -I/home/lane/Downloads/rapidjson/include -I/usr/include/bullet/ -I$(V8ROOT) $< -o $@
 
 clean:
 	make -C net/ clean

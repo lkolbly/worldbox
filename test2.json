@@ -1,0 +1,9 @@
+{
+    "scriptFilename": "test2.js",
+    "physics": {
+	"mass": 1.0,
+	"shape": [
+	    {"primitive": "cube", "size": 1.0, "position": {"x": 0.0, "y": 0.0, "z": 0.0}}
+	]
+    }
+}

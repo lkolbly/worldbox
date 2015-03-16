@@ -9,6 +9,7 @@
 #include<include/v8.h>
 #include<include/libplatform/libplatform.h>
 #include<bullet/btBulletDynamicsCommon.h>
+#include<rapidjson/document.h>
 
 #include "vec3.hxx"
 #include "entity.hxx"
@@ -65,7 +66,15 @@ void globalEntityGetter(Local<String> property, const PropertyCallbackInfo<Value
 
 // filename is the filename of the JS file that runs the entity
 // Each entity JS script is run in a different context so they don't interfere
-void SpawnEntity(const char *filename, Isolate *isolate) {
+void SpawnEntity(const char *filename, Vec3 position, Isolate *isolate) {
+  // Parse the JSON file, figure out what we need to figure out
+  std::string config_str = readFile(filename);
+  rapidjson::Document config_doc;
+  config_doc.Parse(config_str.c_str());
+
+  const char *script_filename = config_doc["scriptFilename"].GetString();
+  printf("Script filename: %s\n", script_filename);
+
   // Create a stack-allocated handle scope.
   //Isolate::Scope isolate_scope(isolate);
   HandleScope handle_scope(isolate);
@@ -96,7 +105,7 @@ void SpawnEntity(const char *filename, Isolate *isolate) {
   btBoxShape *shape = new btBoxShape(btVector3(1,1,1));
   btTransform transform;
   transform.setIdentity();
-  transform.setOrigin(btVector3(0,3,0));
+  transform.setOrigin(btVector3(position.GetX(),position.GetY(),position.GetZ()));
   btVector3 localInertia(0,0,0);
   double mass = 1.0;
   shape->calculateLocalInertia(mass,localInertia);
@@ -121,7 +130,7 @@ void SpawnEntity(const char *filename, Isolate *isolate) {
   }
 
   // Create a string containing the JavaScript source code.
-  Local<String> source = String::NewFromUtf8(isolate, readFile(filename).c_str());
+  Local<String> source = String::NewFromUtf8(isolate, readFile(script_filename).c_str());
 
   // Compile the source code.
   //curcontext = esc->context; // Set the current context
@@ -263,6 +272,17 @@ void NetClient::update()
 	sub._cb = NetClient::MessageReceiver;
 	MsgAddSubscriber(sub);
       }
+    } else if (msgtype == 0x0201) {
+      // SpawnEntity
+      worldbox::SpawnEntity msg;
+      msg.ParseFromString(buf);
+      Vec3 pos;
+      if (msg.has_start_position()) {
+	pos.SetXYZ(msg.start_position().x(),
+		   msg.start_position().y(),
+		   msg.start_position().z());
+      }
+      SpawnEntity(msg.type().c_str(), pos, Isolate::GetCurrent());
     }
 
     delete buf;
@@ -378,8 +398,8 @@ int main(int argc, char **argv)
   {
     Isolate::Scope isolate_scope(isolate);
 
-    SpawnEntity("test.js", isolate);
-    SpawnEntity("test2.js", isolate);
+    //SpawnEntity("test.js", isolate);
+    //SpawnEntity("test2.js", isolate);
 
     // Run the game loop
     while (1) {

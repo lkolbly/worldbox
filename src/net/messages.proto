@@ -1,11 +1,19 @@
 package worldbox;
 
+//
+// Message category 0: Paperwork. (stats, auth, etc.)
+//
+
 // Message type 0x00 01
 // c->s: Sent on connection.
 // s->c: Sent to acknowledge connection & welcome client.
 message Hello {
   required int32 version = 1;
 }
+
+//
+// Message category 1: Message passing.
+//
 
 // Message type 0x01 01
 // c->s: Broadcast string message to channel.
@@ -21,4 +29,21 @@ message MsgBroadcast {
 message MsgSubscribe {
   required string channel = 1;
   optional bool unsubscribe = 2 [default = false];
+}
+
+//
+// Message category 2: Entities.
+//
+
+message Vec3 {
+  required double x = 1;
+  required double y = 2;
+  required double z = 3;
+}
+
+// Message type 0x02 01
+// c->s: Request that a new entity be spawned.
+message SpawnEntity {
+  required string type = 1;
+  optional Vec3 start_position = 2;
 }

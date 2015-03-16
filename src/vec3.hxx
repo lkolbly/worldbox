@@ -20,6 +20,9 @@ public:
   static void ToStringAccessor(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info);
 
   void SetXYZ(double x, double y, double z);
+  double GetX() { return _x; };
+  double GetY() { return _y; };
+  double GetZ() { return _z; };
   void Set(btVector3 v);
 };
 
