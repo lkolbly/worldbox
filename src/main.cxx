@@ -180,7 +180,7 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
     shape->calculateLocalInertia(mass,localInertia);
   btDefaultMotionState *motionstate = new btDefaultMotionState(transform);
   btRigidBody::btRigidBodyConstructionInfo rbInfo(mass,motionstate,shape,localInertia);
-  rbInfo.m_friction = 0.01;
+  rbInfo.m_friction = 1.0;
   btRigidBody *body = new btRigidBody(rbInfo);
   printf("We have rigid body: %p\n",body);
   entity->_rigidBody = body;
@@ -198,7 +198,9 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   }
 
   // Create a string containing the JavaScript source code.
-  Local<String> source = String::NewFromUtf8(isolate, readFile(script_filename).c_str());
+  std::string source_str = readFile(script_filename);
+  printf("We got a source of %i bytes.\n", source_str.length());
+  Local<String> source = String::NewFromUtf8(isolate, source_str.c_str());
 
   // Compile the source code.
   //curcontext = esc->context; // Set the current context
@@ -274,9 +276,9 @@ std::string jsonStringify(Handle<Value> message) {
 
 void NetClient::SendMessage(int type, std::string message) {
   unsigned short msgsize=htons(message.length()), msgtype=htons(type);
-  write(client->_sockfd, &msgsize, 2);
-  write(client->_sockfd, &msgtype, 2);
-  write(client->_sockfd, message.c_str(), message.length());
+  write(_sockfd, &msgsize, 2);
+  write(_sockfd, &msgtype, 2);
+  write(_sockfd, message.c_str(), message.length());
 }
 
 void NetClient::MessageReceiver(void *userdata, std::string channel, v8::Handle<v8::Value> message) {
@@ -288,10 +290,11 @@ void NetClient::MessageReceiver(void *userdata, std::string channel, v8::Handle<
 
   worldbox::MsgBroadcast msg;
   msg.set_json(msg_str);
+  msg.set_channel(channel);
   std::string str;
   msg.SerializeToString(&str);
 
-  SendMessage(0x0101, msg);
+  client->SendMessage(0x0101, str);
   /*unsigned short msgsize=htons(str.length()), msgtype=htons(0x0101);
   printf("Sending message to %i, size=%X type=%X\n",client->_sockfd, msgsize, msgtype);
   write(client->_sockfd, &msgsize, 2);
@@ -475,7 +478,7 @@ int main(int argc, char **argv)
   btBroadphaseInterface *pairCache = new btDbvtBroadphase();
   btSequentialImpulseConstraintSolver *solver = new btSequentialImpulseConstraintSolver();
   physics_world = new btDiscreteDynamicsWorld(dispatcher, pairCache, solver, collisionConfig);
-  physics_world->setGravity(btVector3(0,0,0));
+  physics_world->setGravity(btVector3(0,-10,0));
 
 #if 0
   // Create the ground...
@@ -514,9 +517,14 @@ int main(int argc, char **argv)
     struct timespec last_tm;
     clock_gettime(CLOCK_MONOTONIC, &last_tm);
     double dt = 0.01;
+    int loopnum = 0;
     while (1) {
       for (std::vector<EntitySpawnContext*>::iterator it=esc_List.begin() ; it!=esc_List.end(); /*noop*/) {
         curesc = *it;
+
+	// Skip if we don't have an update callback
+	if (!curesc->entity->functions.count("update")) continue;
+
 	HandleScope handle_scope(isolate);
 	Handle<Value> fnargs[1];
 	//fnargs[0] = esc->v8entity;//entity;
@@ -558,13 +566,16 @@ int main(int argc, char **argv)
  	clock_gettime(CLOCK_MONOTONIC, &curtime);
 	dt = curtime.tv_sec-last_tm.tv_sec + (double)(curtime.tv_nsec-last_tm.tv_nsec)/1000000000.0;
       }
-      printf("dt=%.3f\n",dt);
+      //printf("dt=%.3f\n",dt);
       last_tm = curtime;
+      loopnum++;
 
-      // Print out heap info
-      HeapStatistics heap;
-      isolate->GetHeapStatistics(&heap);
-      printf("V8 is using %i of %i bytes on the heap.\n", heap.used_heap_size(), heap.total_heap_size());
+      if (loopnum%100 == 0) {
+	// Print out heap info
+	HeapStatistics heap;
+	isolate->GetHeapStatistics(&heap);
+	printf("V8 is using %i of %i bytes on the heap.\n", heap.used_heap_size(), heap.total_heap_size());
+      }
     }
   }
 

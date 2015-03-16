@@ -1,0 +1,8 @@
+{
+    "scriptFilename": "terrain.js",
+    "physics": {
+	"shape": [
+	    {"primitive": "box", "size": {"x": 100.0, "y": 100.0, "z": 100.0}, "position": {"x": 0.0, "y": -50.0, "z": 0.0}}
+	]
+    }
+}
