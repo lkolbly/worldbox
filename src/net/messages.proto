@@ -48,5 +48,5 @@ message SpawnEntity {
     string cfg_filename = 1; // The filename of a JSON file
     string cfg_json = 2; // An actual JSON string
   }
-  optional Vec3 start_position = 3;
+  optional Vec3 start_position = 3; // Default is (0,0,0)
 }

@@ -24,6 +24,9 @@ public:
   double GetY() { return _y; };
   double GetZ() { return _z; };
   void Set(btVector3 v);
+  btVector3 ToBtVec();
+
+  Vec3 operator*(double scalar);
 };
 
 #endif

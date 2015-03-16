@@ -19,6 +19,18 @@ void Vec3::SetXYZ(double x, double y, double z)
   _z = z;
 }
 
+btVector3 Vec3::ToBtVec()
+{
+  return btVector3(_x, _y, _z);
+}
+
+Vec3 Vec3::operator*(double scalar)
+{
+  Vec3 v;
+  v.SetXYZ(_x*scalar, _y*scalar, _z*scalar);
+  return v;
+}
+
 void Vec3::GetXYZ(Local<Name> name, const PropertyCallbackInfo<Value>& info)
 {
   // Unwrap the vector

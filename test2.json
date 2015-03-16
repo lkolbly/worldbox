@@ -3,7 +3,10 @@
     "physics": {
 	"mass": 1.0,
 	"shape": [
-	    {"primitive": "cube", "size": 1.0, "position": {"x": 0.0, "y": 0.0, "z": 0.0}}
+	    {"primitive": "box", "size": {"x": 1.0, "y": 1.0, "z": 1.0}, "position": {"x": 0.0, "y": 0.0, "z": 0.0}},
+	    {"primitive": "cylinder", "rx": 1.0, "rz": 1.0, "height": 1.0, "position": {"x": 0.0, "y": 0.0, "z": 0.0}, "rotation": {"axis": {"x": 1.0, "y": 0.0, "z": 0.0}, "amt": 1.0}},
+	    {"primitive": "sphere", "r": 1.0},
+	    {"primitive": "capsule", "r": 1.0, "height": 1.0}
 	]
     }
 }
