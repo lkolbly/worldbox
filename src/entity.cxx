@@ -209,7 +209,7 @@ void Entity::PositionAccessor(Local<Name> name, const PropertyCallbackInfo<Value
     btVector3 linvel = centity->_rigidBody->getLinearVelocity();
     btTransform trans;
     centity->_rigidBody->getMotionState()->getWorldTransform(trans);
-    linvel = btTransform(trans.getRotation()) * linvel;
+    linvel = btTransform(trans.inverse().getRotation()) * linvel;
     pos->Set(linvel);
   } else if (strcmp(str.c_str(), "rotation") == 0) {
     // Returns it in rotation axis form

@@ -523,7 +523,10 @@ int main(int argc, char **argv)
         curesc = *it;
 
 	// Skip if we don't have an update callback
-	if (!curesc->entity->functions.count("update")) continue;
+	if (!curesc->entity->functions.count("update")) {
+	  ++it;
+	  continue;
+	}
 
 	HandleScope handle_scope(isolate);
 	Handle<Value> fnargs[1];

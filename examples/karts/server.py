@@ -41,14 +41,19 @@ class WorldBox:
         msg.channel = "kartLocation"
         self.sendMessage(0x0102, msg)
 
+        msg = messages_pb2.MsgSubscribe()
+        msg.channel = "kartDestroyed"
+        self.sendMessage(0x0102, msg)
+
         msg = messages_pb2.SpawnEntity()
-        msg.cfg_filename = "terrain.json"
+        msg.cfg_filename = "examples/karts/game_assets/terrain.json"
         self.sendMessage(0x0201, msg)
 
         # This is a list of everyone who's asked us to make an entity,
         # but we're still waiting to give them said entity.
         self.expecting_clients = []
         self.karts = {}
+        self.clients = [] # All clients
 
         io_loop.add_handler(self.socket.fileno(), lambda a,b: self.ondata(a,b,None), io_loop.READ)
 
@@ -74,7 +79,13 @@ class WorldBox:
                 expecting.gotEntity(obj["id"])
                 self.karts[obj["id"]] = expecting
             elif msg.channel == "kartLocation":
-                self.karts[obj["id"]].updateKartLocation(obj)
+                if obj["id"] in self.karts:
+                    self.karts[obj["id"]].updateKartLocation(obj)
+                for c in self.clients:
+                    c.updateOtherKartLocation(obj)
+            elif msg.channel == "kartDestroyed":
+                if obj["id"] in self.karts:
+                    self.karts[obj["id"]].kartDestroyed()
             #print "Got message: %s"%msg.json
         pass
 
@@ -87,7 +98,7 @@ class WorldBox:
 
     def addClient(self, cb):
         msg = messages_pb2.SpawnEntity()
-        msg.cfg_filename = "kart.json"
+        msg.cfg_filename = "examples/karts/game_assets/kart.json"
         msg.start_position.x = random.random()*20.0-10.0
         msg.start_position.y = random.random()*20.0-10.0
         msg.start_position.z = random.random()*20.0-10.0
@@ -108,6 +119,7 @@ class GameWebSocket(websocket.WebSocketHandler):
         print "Client connected. Creating entity..."
         self.eid = -1
         worldbox.addClient(self)
+        worldbox.clients.append(self)
 
     def gotEntity(self, eid):
         print "Entity created w/ eid=%s"%eid
@@ -115,9 +127,20 @@ class GameWebSocket(websocket.WebSocketHandler):
         self.write_message(json.dumps({"ourKartId": eid}))
         pass
 
+    def kartDestroyed(self):
+        print "We lost, going again..."
+        worldbox.addClient(self)
+        pass
+
     def updateKartLocation(self, kart_location):
         # Forward that on...
+        kart_location["type"] = "my_loc"
         self.write_message(json.dumps(kart_location))
+        pass
+
+    def updateOtherKartLocation(self, obj):
+        obj["type"] = "other_loc"
+        self.write_message(json.dumps(obj))
         pass
 
     def on_message(self, message):
@@ -133,6 +156,7 @@ class GameWebSocket(websocket.WebSocketHandler):
     def on_close(self):
         print "Closing websocket. Delete the kart."
         worldbox.removeEntity(self.eid)
+        worldbox.clients.remove(self)
         pass
 
 class MainHandler(tornado.web.RequestHandler):

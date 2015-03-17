@@ -16,13 +16,43 @@ entity.subscribe("kill_"+my_id, function(msg) {
 });
 
 entity.setCallback("update", function(dt) {
+    if (entity.position.y < -10.0) {
+	entity.broadcast("kartDestroyed", {id: my_id});
+	entity.markForRemoval();
+	return;
+    }
+
     // Apply forces according to throttle
     // +Z is forward. +Y is up. +X is left.
     entity.applyForce(0.0,0.0,controls.throttle, 0.0,0.0,0.0);
 
     // Apply steer force
-    entity.applyForce(controls.steer,0.0,0.0, 0.0,0.0,1.0);
-    entity.applyForce(-controls.steer,0.0,0.0, 0.0,0.0,-1.0);
+    if (entity.velocity.z > 0.0) {
+	entity.applyForce(controls.steer,0.0,0.0, 0.0,0.0,1.0);
+	entity.applyForce(-controls.steer,0.0,0.0, 0.0,0.0,-1.0);
+    } else {
+	// Reverse if going backwards (hackish much?)
+	entity.applyForce(-controls.steer,0.0,0.0, 0.0,0.0,1.0);
+	entity.applyForce(controls.steer,0.0,0.0, 0.0,0.0,-1.0);
+    }
+
+    // Determine our orientation
+    var rotation = {x: entity.rotation.x, y: entity.rotation.y, z: entity.rotation.z};
+    var len = Math.sqrt(rotation.x*rotation.x + rotation.y*rotation.y + rotation.z*rotation.z);
+    if (len != 0) {
+	rotation.x /= len;
+	rotation.y /= len;
+	rotation.z /= len;
+    }
+
+    // Apply an air friction
+    var FRIC = 1.0;
+    var vel = {
+	x: -entity.velocity.x*FRIC,
+	y: -entity.velocity.y*FRIC,
+	z: -entity.velocity.z*FRIC
+    };
+    entity.applyForce(vel.x, vel.y, vel.z, 0.0,0.0,0.0);
 
     // Update the player with our location
     entity.broadcast("kartLocation", {id: my_id, position: entity.position, rotation: entity.rotation});

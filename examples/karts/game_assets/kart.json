@@ -1,5 +1,5 @@
 {
-    "scriptFilename": "kart.js",
+    "scriptFilename": "examples/karts/game_assets/kart.js",
     "physics": {
 	"mass": 1.0,
 	"shape": [
