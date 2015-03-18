@@ -238,16 +238,28 @@ void Entity::PositionAccessor(Local<Name> name, const PropertyCallbackInfo<Value
   info.GetReturnValue().Set(Vec3::Wrap(pos, info.GetIsolate()));
 }
 
+Persistent<FunctionTemplate> applyForce_Fun_Template;
+
 void Entity::ApplyForceAccessor(Local<Name> name, const PropertyCallbackInfo<Value>&info) {
-  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::ApplyForce)->GetFunction());
+  if (applyForce_Fun_Template.IsEmpty()) {
+    applyForce_Fun_Template.Reset(Isolate::GetCurrent(), FunctionTemplate::New(info.GetIsolate(), Entity::ApplyForce));
+  }
+  Handle<FunctionTemplate> tpl = Local<FunctionTemplate>::New(Isolate::GetCurrent(), applyForce_Fun_Template);
+  info.GetReturnValue().Set(tpl->GetFunction());
 }
 
 void Entity::MsgSubscribeAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::MsgSubscribe)->GetFunction());
 }
 
+Persistent<FunctionTemplate> broadcast_Fn_Template;
+
 void Entity::MsgBroadcastAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
-  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::MsgBroadcast2)->GetFunction());
+  if (broadcast_Fn_Template.IsEmpty()) {
+    broadcast_Fn_Template.Reset(Isolate::GetCurrent(), FunctionTemplate::New(info.GetIsolate(), Entity::MsgBroadcast2));
+  }
+  Handle<FunctionTemplate> tpl = Local<FunctionTemplate>::New(Isolate::GetCurrent(), broadcast_Fn_Template);
+  info.GetReturnValue().Set(tpl->GetFunction());
 }
 
 // Makes an entity, given these arguments

@@ -33,6 +33,8 @@ public:
 
   // Physics properties
   btRigidBody *_rigidBody;
+  btDefaultMotionState *_motionState;
+  btCompoundShape *_shape;
 
   // v8 properties
   v8::Handle<v8::ObjectTemplate> global;

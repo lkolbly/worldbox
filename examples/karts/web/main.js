@@ -93,14 +93,19 @@ $(function() {
     var floorMat = new THREE.MeshBasicMaterial({map:floorTexture, side: THREE.DoubleSide});
     var floorGeo = new THREE.PlaneGeometry(100, 100, 1, 1);
     var floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.position.y = -0.5;
+    floor.position.y = 0.0;
     floor.rotation.x = Math.PI / 2.0;
+    scene.add(floor);
+
+    floorGeo = new THREE.SphereGeometry(80.0, 30,30);
+    floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.position.y = -75.0;
     scene.add(floor);
 
     function animate() {
 	requestAnimationFrame(animate);
 	cube.position.x = position.position.x;
-	cube.position.y = position.position.y;
+	cube.position.y = position.position.y+0.5;
 	cube.position.z = position.position.z;
 
 	var rotation = {x: position.rotation.x, y: position.rotation.y, z: position.rotation.z};
@@ -130,7 +135,7 @@ $(function() {
 		}
 
 		other_gfx[k].position.x = other_positions[k].position.x;
-		other_gfx[k].position.y = other_positions[k].position.y;
+		other_gfx[k].position.y = other_positions[k].position.y+0.5;
 		other_gfx[k].position.z = other_positions[k].position.z;
 
 		var rotation = {x: other_positions[k].rotation.x, y: other_positions[k].rotation.y, z: other_positions[k].rotation.z};
@@ -156,13 +161,6 @@ $(function() {
 		proj_gfx[k].position.x = proj_positions[k].position.x;
 		proj_gfx[k].position.y = proj_positions[k].position.y;
 		proj_gfx[k].position.z = proj_positions[k].position.z;
-
-		/*var rotation = {x: other_positions[k].rotation.x, y: other_positions[k].rotation.y, z: other_positions[k].rotation.z};
-		var len = Math.sqrt(rotation.x*rotation.x + rotation.y*rotation.y + rotation.z*rotation.z);
-		rotation.x /= len;
-		rotation.y /= len;
-		rotation.z /= len;
-		other_gfx[k].quaternion.setFromAxisAngle(new THREE.Vector3(rotation.x,rotation.y,rotation.z), len);*/
 	    }
 	}
 

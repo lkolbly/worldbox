@@ -86,6 +86,8 @@ void Vec3::ToStringAccessor(Local<Name> name, const PropertyCallbackInfo<Value>&
   info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Vec3::ToString)->GetFunction());
 }
 
+Persistent<ObjectTemplate> vec3_Entity_Template;
+
 Handle<ObjectTemplate> Vec3::MakeTemplate(Isolate *isolate)
 {
   EscapableHandleScope handle_scope(isolate);
@@ -95,12 +97,17 @@ Handle<ObjectTemplate> Vec3::MakeTemplate(Isolate *isolate)
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "y", String::kInternalizedString), GetXYZ, SetXYZ);
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "z", String::kInternalizedString), GetXYZ, SetXYZ);
   jsentity->SetAccessor(String::NewFromUtf8(isolate, "toString", String::kInternalizedString), ToStringAccessor);
+  vec3_Entity_Template.Reset(isolate, jsentity);
   return handle_scope.Escape(jsentity);
 }
 
 Handle<Object> Vec3::Wrap(Vec3 *v, Isolate *isolate) {
   EscapableHandleScope handle_scope(isolate);
-  Handle<ObjectTemplate> entity_tpl = Vec3::MakeTemplate(isolate);
+  if (vec3_Entity_Template.IsEmpty()) {
+    Vec3::MakeTemplate(isolate);
+  }
+  //Handle<ObjectTemplate> entity_tpl = Vec3::MakeTemplate(isolate);
+  Local<ObjectTemplate> entity_tpl = Local<ObjectTemplate>::New(isolate, vec3_Entity_Template);
   Local<Object> v8v = entity_tpl->NewInstance();
   Handle<External> v_ptr = External::New(isolate, v);
   v8v->SetInternalField(0, v_ptr);

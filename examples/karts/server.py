@@ -167,7 +167,7 @@ class WorldBox:
         msg = messages_pb2.SpawnEntity()
         msg.cfg_filename = "examples/karts/game_assets/kart.json"
         msg.start_position.x = random.random()*20.0-10.0
-        msg.start_position.y = random.random()*20.0-10.0
+        msg.start_position.y = 10.0
         msg.start_position.z = random.random()*20.0-10.0
         self.sendMessage(0x0201, msg)
         self.expecting_clients.append(cb)

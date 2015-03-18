@@ -7,6 +7,7 @@
 #include<netinet/in.h>
 #include<unistd.h>
 #include<include/v8.h>
+#include<include/v8-profiler.h>
 #include<include/libplatform/libplatform.h>
 #include<bullet/btBulletDynamicsCommon.h>
 #include<rapidjson/document.h>
@@ -184,6 +185,8 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   btRigidBody *body = new btRigidBody(rbInfo);
   printf("We have rigid body: %p\n",body);
   entity->_rigidBody = body;
+  entity->_motionState = motionstate;
+  entity->_shape = shape;
   physics_world->addRigidBody(body);
 
   // Add it to the ESC
@@ -215,6 +218,28 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   printf("Result: %s\n", *utf8);
 
   esc_List.push_back(esc);
+}
+
+void DeleteEntity(EntitySpawnContext *esc) {
+  // Delete all of bullet's things...
+  physics_world->removeRigidBody(esc->entity->_rigidBody);
+  delete esc->entity->_motionState;
+  for (int i=0; i<esc->entity->_shape->getNumChildShapes(); i++) {
+    btCollisionShape *shape = esc->entity->_shape->getChildShape(i);
+    delete shape;
+  }
+  delete esc->entity->_shape;
+  delete esc->entity->_rigidBody;
+
+  // Remove V8's stuff...
+  esc->entity->context.Reset();
+  for (std::map<std::string,Persistent<Function>>::iterator it=esc->entity->functions.begin(); it!=esc->entity->functions.end(); ++it) {
+    it->second.Reset();
+  }
+
+  // Remove our bookkeeping structures...
+  delete esc->entity;
+  delete esc;
 }
 
 std::string readFile(const char *pathname)
@@ -255,6 +280,7 @@ public:
 
 std::string jsonStringify(Handle<Value> message) {
   // Create a new context for this (hrm, probably expensive...)
+  HandleScope handle_scope(Isolate::GetCurrent());
   Local<Context> context = Context::New(Isolate::GetCurrent());
   Context::Scope context_scope(context);
 
@@ -351,18 +377,18 @@ void NetClient::update()
     // Parse the body
     if (msgtype == 0x0001) {
       worldbox::Hello msg;
-      msg.ParseFromString(buf);
+      msg.ParseFromArray(buf, msgsize);
       printf("Got hello with version=%i\n", msg.version());
     } else if (msgtype == 0x0101) {
       // MsgBroadcast
       worldbox::MsgBroadcast msg;
-      msg.ParseFromString(buf);
+      msg.ParseFromArray(buf, msgsize);
       HandleScope handle_scope(Isolate::GetCurrent());
       MsgBroadcast(msg.channel(), String::NewFromUtf8(Isolate::GetCurrent(),msg.json().c_str()));
     } else if (msgtype == 0x0102) {
       // MsgSubscribe
       worldbox::MsgSubscribe msg;
-      msg.ParseFromString(buf);
+      msg.ParseFromArray(buf, msgsize);
       if (msg.unsubscribe()) {
 	// How do we unsubscribe?
       } else {
@@ -471,6 +497,50 @@ void NetServer::update()
   }
 }
 
+class myv8FileOutputStream : public OutputStream {
+private:
+  std::FILE *_f;
+public:
+  void EndOfStream();
+  int GetChunkSize() { return 1; };
+  int GetOutputEncoding() { return 0; };
+  WriteResult WriteAsciiChunk(char *data, int size);
+  myv8FileOutputStream(const char *filename);
+  ~myv8FileOutputStream();
+};
+
+myv8FileOutputStream::myv8FileOutputStream(const char *filename) {
+  _f = std::fopen(filename, "w");
+  if (!_f) {
+    fprintf(stderr, "Error opening %s for writing...\n", filename);
+  }
+}
+
+myv8FileOutputStream::~myv8FileOutputStream() {
+  // Do nothing...
+}
+
+void myv8FileOutputStream::EndOfStream() {
+  std::fclose(_f);
+}
+
+OutputStream::WriteResult myv8FileOutputStream::WriteAsciiChunk(char *data, int size) {
+  std::fwrite(data, size, 1, _f);
+  return kContinue;
+}
+
+//HeapProfiler *heap_Profiler;
+
+void DumpHeapProfile(const char *filename)
+{
+  HandleScope handle_scope(Isolate::GetCurrent());
+  HeapProfiler *heap_Profiler = Isolate::GetCurrent()->GetHeapProfiler();
+  const HeapSnapshot *snap = heap_Profiler->TakeHeapSnapshot(String::NewFromUtf8(Isolate::GetCurrent(),"snap"));
+  //HeapSnapshot snap;
+  myv8FileOutputStream out(filename);
+  snap->Serialize(&out, HeapSnapshot::SerializationFormat::kJSON);
+}
+
 int main(int argc, char **argv)
 {
   // Initialize V8.
@@ -555,6 +625,7 @@ int main(int argc, char **argv)
 	if (curesc->entity->_toremove) {
 	  // TODO: Clear all the persistent stuff...
 	  printf("Removing...\n");
+	  DeleteEntity(curesc);
 	  it = esc_List.erase(it);
 	} else {
 	  ++it;
@@ -579,12 +650,17 @@ int main(int argc, char **argv)
       //printf("dt=%.3f\n",dt);
       last_tm = curtime;
       loopnum++;
+      fflush(stdout);
 
       if (loopnum%100 == 0) {
 	// Print out heap info
 	HeapStatistics heap;
 	isolate->GetHeapStatistics(&heap);
 	printf("V8 is using %i of %i bytes on the heap.\n", heap.used_heap_size(), heap.total_heap_size());
+      }
+
+      if (loopnum%1000 == 0) {
+	DumpHeapProfile("profile.prof");
       }
     }
   }

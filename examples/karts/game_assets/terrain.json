@@ -2,7 +2,8 @@
     "scriptFilename": "examples/karts/game_assets/terrain.js",
     "physics": {
 	"shape": [
-	    {"primitive": "box", "size": {"x": 100.0, "y": 100.0, "z": 100.0}, "position": {"x": 0.0, "y": -50.0, "z": 0.0}}
+	    {"primitive": "box", "size": {"x": 100.0, "y": 100.0, "z": 100.0}, "position": {"x": 0.0, "y": -50.0, "z": 0.0}},
+	    {"primitive": "sphere", "r": 80.0, "position": {"x": 0.0, "y": -75.0, "z": 0.0}, "rotation": {"axis": {"x": 0.0, "y": 0.0, "z": 1.0}, "amt": 0.785398}}
 	]
     }
 }
