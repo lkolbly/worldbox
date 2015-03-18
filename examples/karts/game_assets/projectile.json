@@ -1,0 +1,9 @@
+{
+    "scriptFilename": "examples/karts/game_assets/projectile.js",
+    "physics": {
+	"mass": 10.0,
+	"shape": [
+	    {"primitive": "sphere", "r": 0.3}
+	]
+    }
+}

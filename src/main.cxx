@@ -346,6 +346,7 @@ void NetClient::update()
     printf("%X bytes of body (type=%X)...\n", msgsize, msgtype);
     char *buf = new char[msgsize];
     nread = read(_sockfd, buf, msgsize);
+    printf("Read %X bytes from network.\n",nread);
 
     // Parse the body
     if (msgtype == 0x0001) {
@@ -376,12 +377,18 @@ void NetClient::update()
     } else if (msgtype == 0x0201) {
       // SpawnEntity
       worldbox::SpawnEntity msg;
-      msg.ParseFromString(buf);
+      bool retval = msg.ParseFromArray(buf, msgsize);
+      printf("Return val: %i\n",retval?1:0);
+      for (int i=0; i<msgsize; i++) {
+	printf("%02X",buf[i]);
+      }
+      printf("\n");
       Vec3 pos;
       if (msg.has_start_position()) {
 	pos.SetXYZ(msg.start_position().x(),
 		   msg.start_position().y(),
 		   msg.start_position().z());
+	printf("Position: %f,%f,%f -> %f,%f,%f\n", msg.start_position().x(), msg.start_position().y(), msg.start_position().z(), pos.GetX(), pos.GetY(), pos.GetZ());
       }
       std::string config_str;
       if (msg.has_cfg_filename()) {

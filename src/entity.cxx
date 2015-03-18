@@ -12,6 +12,7 @@ using namespace v8;
 class EntityMessageSubscriber {
 public:
   Entity *entity;
+  void *esc; // TODO: Make this less hacky...
   Persistent<Function> callback;
   //std::string channel_name;
 };
@@ -38,17 +39,23 @@ void BroadcastMessage(Isolate *isolate, std::string channel, Handle<Value> messa
 }
 #endif
 
+class EntitySpawnContext;
+extern EntitySpawnContext *curesc;
+
 void Entity::ReceiveMessage(void *userdata, std::string channel, Handle<Value> message)
 {
   // Pass along the message
   // Note: The callback cannot modify the message.
   EntityMessageSubscriber *sub = (EntityMessageSubscriber*)userdata;
+  curesc = (EntitySpawnContext*)sub->esc;
+
   printf("Sending a message...\n");
   HandleScope handle_scope(Isolate::GetCurrent());
   Handle<Value> fnargs[1];
   fnargs[0] = message;
   Local<Function> fn = Local<Function>::New(Isolate::GetCurrent(), sub->callback);
   Local<Context> ctx = Local<Context>::New(Isolate::GetCurrent(), sub->entity->context);
+  Context::Scope context_scope(ctx);
 
   fn->Call(ctx->Global(), 1, fnargs);
 }
@@ -137,6 +144,7 @@ void Entity::MsgSubscribe(const FunctionCallbackInfo<Value>& args) {
 
   EntityMessageSubscriber *e_sub = new EntityMessageSubscriber();
   e_sub->entity = centity;
+  e_sub->esc = (void*)curesc;
 
   Handle<Function> localhandle = Handle<Function>::Cast(args[1]);
   e_sub->callback.Reset(args.GetIsolate(), localhandle);

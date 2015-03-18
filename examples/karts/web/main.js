@@ -2,6 +2,7 @@ var socket = new WebSocket("ws://"+window.location.hostname+":8888/ws");
 
 var position = {};
 var other_positions = {};
+var proj_positions = {};
 
 socket.onmessage = function(event) {
     var obj = JSON.parse(event.data);
@@ -10,7 +11,9 @@ socket.onmessage = function(event) {
 	//console.log(obj);
 	$("#cart-position").html(event.data);
     } else if (obj.type === "other_loc" && obj.id !== position.id) {
-	other_positions[obj.id] = obj
+	other_positions[obj.id] = obj;
+    } else if (obj.type === "proj_loc") {
+	proj_positions[obj.id] = obj;
     }
 };
 
@@ -18,41 +21,52 @@ $("#disconnect").click(function() {
     socket.close();
 });
 
-var controls = {throttle: 0.0, steer: 0.0};
+var controls = {throttle: 0.0, steer: 0.0, shoot: false};
 
 function sendControls() {
     socket.send(JSON.stringify({type: "controls", controls: controls}));
+    controls.shoot = false;
 };
 
 var down_keys = {};
+function updateControls() {
+    controls.throttle = 0.0;
+    controls.steer = 0.0;
+    controls.shoot = false;
+    if (down_keys[87] === true) { // W
+	controls.throttle += 20.0;
+    }
+    if (down_keys[65] === true) { // A
+	controls.steer += 0.4;
+    }
+    if (down_keys[83] === true) { // S
+	controls.throttle += -20.0;
+    }
+    if (down_keys[68] === true) { // D
+	controls.steer += -0.4;
+    }
+    if (down_keys[32] === true) { // Space
+	// Shoot something...
+	controls.shoot = true;
+    }
+}
+
 $("body").keydown(function(event) {
     if (down_keys[event.keyCode] === true) return;
     console.log(event);
-    if (event.keyCode === 87) { // W
-	controls.throttle = 20.0;
-    } else if (event.keyCode === 65) { // A
-	controls.steer = 0.3;
-    } else if (event.keyCode === 83) { // S
-	controls.throttle = -20.0;
-    } else if (event.keyCode === 68) { // D
-	controls.steer = -0.3;
-    }
     down_keys[event.keyCode] = true;
+    updateControls();
     sendControls();
 });
 
 $("body").keyup(function(event) {
-    if (event.keyCode === 87 || event.keyCode === 83) {
-	controls.throttle = 0.0;
-    }
-    if (event.keyCode === 65 || event.keyCode === 68) {
-	controls.steer = 0.0;
-    }
     down_keys[event.keyCode] = false;
+    updateControls();
     sendControls();
 });
 
 var other_gfx = {};
+var proj_gfx = {};
 
 $(function() {
     // Largely from stemkoski's great 3JS examples (incl. checkerboard)
@@ -125,6 +139,30 @@ $(function() {
 		rotation.y /= len;
 		rotation.z /= len;
 		other_gfx[k].quaternion.setFromAxisAngle(new THREE.Vector3(rotation.x,rotation.y,rotation.z), len);
+	    }
+	}
+
+	for (var k in proj_positions) {
+	    if (proj_positions.hasOwnProperty(k)) {
+		if (!proj_gfx.hasOwnProperty(k)) {
+		    // Setup an other cube...
+		    var boxGeometry = new THREE.SphereGeometry(0.3);
+		    var material = new THREE.MeshBasicMaterial({color: 0x008800});
+		    var c = new THREE.Mesh(boxGeometry, material);
+		    scene.add(c);
+		    proj_gfx[k] = c;
+		}
+
+		proj_gfx[k].position.x = proj_positions[k].position.x;
+		proj_gfx[k].position.y = proj_positions[k].position.y;
+		proj_gfx[k].position.z = proj_positions[k].position.z;
+
+		/*var rotation = {x: other_positions[k].rotation.x, y: other_positions[k].rotation.y, z: other_positions[k].rotation.z};
+		var len = Math.sqrt(rotation.x*rotation.x + rotation.y*rotation.y + rotation.z*rotation.z);
+		rotation.x /= len;
+		rotation.y /= len;
+		rotation.z /= len;
+		other_gfx[k].quaternion.setFromAxisAngle(new THREE.Vector3(rotation.x,rotation.y,rotation.z), len);*/
 	    }
 	}
 

@@ -9,6 +9,15 @@ entity.subscribe("controls_"+my_id, function(msg) {
     msg = JSON.parse(msg); // We have to parse it since it's from the 'outside'
     if (msg.hasOwnProperty("throttle")) controls.throttle = msg.throttle;
     if (msg.hasOwnProperty("steer")) controls.steer = msg.steer;
+
+    if (msg.hasOwnProperty("shoot")) {
+	if (msg.shoot === true) {
+	    var p = {x: entity.position.x, y: entity.position.y, z: entity.position.z};
+	    //var p = {x: 0.0, y: 0.0, z: 0.0};
+	    entity.broadcast("requestProjectile", {position: p, rotation: {x: entity.rotation.x, y: entity.rotation.y, z: entity.rotation.z}});
+	    msg.shoot = false;
+	}
+    }
 });
 
 entity.subscribe("kill_"+my_id, function(msg) {
