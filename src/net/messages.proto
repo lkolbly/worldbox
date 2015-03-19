@@ -1,7 +1,13 @@
 package worldbox;
 
+message Vec3 {
+  required double x = 1;
+  required double y = 2;
+  required double z = 3;
+}
+
 //
-// Message category 0: Paperwork. (stats, auth, settings, etc.)
+// Message category 0: Paperwork. (stats, auth, global settings, etc.)
 //
 
 // Message type 0x00 01
@@ -9,6 +15,12 @@ package worldbox;
 // s->c: Sent to acknowledge connection & welcome client.
 message Hello {
   required int32 version = 1;
+}
+
+// Message type 0x00 02
+// c->s: Set global world settings.
+message GlobalWorldSettings {
+  optional Vec3 physics_gravity = 1;
 }
 
 //
@@ -34,12 +46,6 @@ message MsgSubscribe {
 //
 // Message category 2: Entities.
 //
-
-message Vec3 {
-  required double x = 1;
-  required double y = 2;
-  required double z = 3;
-}
 
 // Message type 0x02 01
 // c->s: Request that a new entity be spawned.

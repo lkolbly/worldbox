@@ -1,5 +1,4 @@
 #include<string>
-//#include<vector>
 #include<include/v8.h>
 #include<bullet/btBulletDynamicsCommon.h>
 
@@ -12,44 +11,15 @@ using namespace v8;
 class EntityMessageSubscriber {
 public:
   Entity *entity;
-  void *esc; // TODO: Make this less hacky...
   Persistent<Function> callback;
-  //std::string channel_name;
 };
-
-#if 0
-std::vector<MessageSubscriber*> message_Subscribers;
-
-void BroadcastMessage(Isolate *isolate, std::string channel, Handle<Value> message) {
-  for (std::vector<MessageSubscriber*>::iterator it=message_Subscribers.begin(); it!=message_Subscribers.end(); ++it) {
-    MessageSubscriber *sub = *it;
-    if (sub->channel_name.compare(channel) == 0 || channel.compare("") == 0) {
-      // Pass along the message
-      // Note: The callback cannot modify the message.
-      printf("Sending a message...\n");
-      HandleScope handle_scope(isolate);
-      Handle<Value> fnargs[1];
-      fnargs[0] = message;
-      Local<Function> fn = Local<Function>::New(isolate, sub->callback);
-      Local<Context> ctx = Local<Context>::New(isolate, sub->entity->context);
-
-      fn->Call(ctx->Global(), 1, fnargs);
-    }
-  }
-}
-#endif
-
-class EntitySpawnContext;
-extern EntitySpawnContext *curesc;
 
 void Entity::ReceiveMessage(void *userdata, std::string channel, Handle<Value> message)
 {
   // Pass along the message
   // Note: The callback cannot modify the message.
   EntityMessageSubscriber *sub = (EntityMessageSubscriber*)userdata;
-  curesc = (EntitySpawnContext*)sub->esc;
 
-  printf("Sending a message...\n");
   HandleScope handle_scope(Isolate::GetCurrent());
   Handle<Value> fnargs[1];
   fnargs[0] = message;
@@ -93,7 +63,6 @@ void Entity::ApplyForce(const FunctionCallbackInfo<Value>& args) {
   btVector3 force(x,y,z);
   centity->_rigidBody->getMotionState()->getWorldTransform(trans);
   force = btTransform(trans.getRotation()) * force;
-  printf("force: %f,%f,%f\n",force.getX(), force.getY(), force.getZ());
 
   // Convert relpos from local to world coords
   btVector3 relpos(rx,ry,rz);
@@ -101,18 +70,14 @@ void Entity::ApplyForce(const FunctionCallbackInfo<Value>& args) {
 
   // Apply the force
   centity->_rigidBody->applyForce(force, relpos);
-  //centity->_rigidBody->applyCentralForce(force);
   centity->_rigidBody->activate();
 
   force = centity->_rigidBody->getTotalForce();
-  printf("force: %f,%f,%f\n",relpos.getX(), relpos.getY(), relpos.getZ());
 }
 
 void Entity::SetCallback(const FunctionCallbackInfo<Value>& args) {
   Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
   Entity *centity = (Entity*)field->Value();
-  centity->_value++;
-  printf("this._value: %i\n", centity->_value);
 
   if (args.Length() < 2) {
     // Throw an error!
@@ -128,15 +93,6 @@ void Entity::SetCallback(const FunctionCallbackInfo<Value>& args) {
   centity->functions[str].Reset(args.GetIsolate(), localhandle);
 }
 
-void Entity::GetValue(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
-  // Unwrap the entity
-  Handle<External> field = Handle<External>::Cast(info.Holder()->GetInternalField(0));
-  Entity *centity = (Entity*)field->Value();
-
-  //centity->_value++;
-  info.GetReturnValue().Set(Integer::New(info.GetIsolate(), centity->_value));
-}
-
 void Entity::MsgSubscribe(const FunctionCallbackInfo<Value>& args) {
   // Unwrap the entity
   Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
@@ -144,61 +100,23 @@ void Entity::MsgSubscribe(const FunctionCallbackInfo<Value>& args) {
 
   EntityMessageSubscriber *e_sub = new EntityMessageSubscriber();
   e_sub->entity = centity;
-  e_sub->esc = (void*)curesc;
 
   Handle<Function> localhandle = Handle<Function>::Cast(args[1]);
   e_sub->callback.Reset(args.GetIsolate(), localhandle);
 
   // Subscribe the given function to the given channel
-  MessageSubscriber subscriber;// = new MessageSubscriber();
+  MessageSubscriber subscriber;
   subscriber.channel_name = *String::Utf8Value(args[0]);
   subscriber._userdata = e_sub;
   subscriber._cb = Entity::ReceiveMessage;
 
-  //message_Subscribers.push_back(subscriber);
   MsgAddSubscriber(subscriber);
 }
 
 void Entity::MsgBroadcast2(const FunctionCallbackInfo<Value>& args) {
-  // Unwrap the entity
-  Handle<External> field = Handle<External>::Cast(args.Holder()->GetInternalField(0));
-  Entity *centity = (Entity*)field->Value();
-
   std::string channel_name = *String::Utf8Value(args[0]);
 
-  //BroadcastMessage(Isolate *isolate, std::string channel, Handle<Value> message) {
-  //BroadcastMessage(args.GetIsolate(), channel_name, args[1]);
   MsgBroadcast(channel_name, args[1]);
-
-#if 0
-  for (std::vector<MessageSubscriber*>::iterator it=message_Subscribers.begin(); it!=message_Subscribers.end(); ++it) {
-    MessageSubscriber *sub = *it;
-    if (sub->channel_name.compare(channel_name) == 0) {
-      // Pass along the message
-      // Note: The callback cannot modify the message.
-      printf("Sending a message...\n");
-      HandleScope handle_scope(args.GetIsolate());
-      Handle<Value> fnargs[1];
-      fnargs[0] = args[1];
-      Local<Function> fn = Local<Function>::New(args.GetIsolate(), sub->callback);
-      Local<Context> ctx = Local<Context>::New(args.GetIsolate(), sub->entity->context);
-
-      fn->Call(ctx->Global(), 1, fnargs);
-    }
-  }
-#endif
-}
-
-void Entity::SetCallbackAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
-  // Unwrap the entity
-  Handle<External> field = Handle<External>::Cast(info.Holder()->GetInternalField(0));
-  Entity *centity = (Entity*)field->Value();
-
-  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::SetCallback)->GetFunction());
-}
-
-void Entity::DieAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
-  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::Die)->GetFunction());
 }
 
 void Entity::PositionAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
@@ -211,7 +129,6 @@ void Entity::PositionAccessor(Local<Name> name, const PropertyCallbackInfo<Value
   if (strcmp(str.c_str(), "position") == 0) {
     btTransform trans;
     centity->_rigidBody->getMotionState()->getWorldTransform(trans);
-    printf("%f\n",double(trans.getOrigin().getY()));
     pos->SetXYZ(double(trans.getOrigin().getX()), double(trans.getOrigin().getY()), double(trans.getOrigin().getZ()));
   } else if (strcmp(str.c_str(), "velocity") == 0) {
     btVector3 linvel = centity->_rigidBody->getLinearVelocity();
@@ -238,46 +155,33 @@ void Entity::PositionAccessor(Local<Name> name, const PropertyCallbackInfo<Value
   info.GetReturnValue().Set(Vec3::Wrap(pos, info.GetIsolate()));
 }
 
-Persistent<FunctionTemplate> applyForce_Fun_Template;
-
-void Entity::ApplyForceAccessor(Local<Name> name, const PropertyCallbackInfo<Value>&info) {
-  if (applyForce_Fun_Template.IsEmpty()) {
-    applyForce_Fun_Template.Reset(Isolate::GetCurrent(), FunctionTemplate::New(info.GetIsolate(), Entity::ApplyForce));
-  }
-  Handle<FunctionTemplate> tpl = Local<FunctionTemplate>::New(Isolate::GetCurrent(), applyForce_Fun_Template);
-  info.GetReturnValue().Set(tpl->GetFunction());
-}
-
-void Entity::MsgSubscribeAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
-  info.GetReturnValue().Set(FunctionTemplate::New(info.GetIsolate(), Entity::MsgSubscribe)->GetFunction());
-}
-
-Persistent<FunctionTemplate> broadcast_Fn_Template;
-
-void Entity::MsgBroadcastAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
-  if (broadcast_Fn_Template.IsEmpty()) {
-    broadcast_Fn_Template.Reset(Isolate::GetCurrent(), FunctionTemplate::New(info.GetIsolate(), Entity::MsgBroadcast2));
-  }
-  Handle<FunctionTemplate> tpl = Local<FunctionTemplate>::New(Isolate::GetCurrent(), broadcast_Fn_Template);
-  info.GetReturnValue().Set(tpl->GetFunction());
-}
+Persistent<ObjectTemplate> entity_Template;
 
 // Makes an entity, given these arguments
 Handle<ObjectTemplate> Entity::MakeEntityTemplate(Isolate *isolate) {
   EscapableHandleScope handle_scope(isolate);
+  Local<ObjectTemplate> jsentity;
 
-  Local<ObjectTemplate> jsentity = ObjectTemplate::New(isolate);
-  jsentity->SetInternalFieldCount(1);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "val", String::kInternalizedString), GetValue);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "setCallback", String::kInternalizedString), SetCallbackAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "markForRemoval", String::kInternalizedString), DieAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "position", String::kInternalizedString), PositionAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "velocity", String::kInternalizedString), PositionAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "rotation", String::kInternalizedString), PositionAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "rotvel", String::kInternalizedString), PositionAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "applyForce", String::kInternalizedString), ApplyForceAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "subscribe", String::kInternalizedString), MsgSubscribeAccessor);
-  jsentity->SetAccessor(String::NewFromUtf8(isolate, "broadcast", String::kInternalizedString), MsgBroadcastAccessor);
+  if (entity_Template.IsEmpty()) {
+    jsentity = ObjectTemplate::New(isolate);
+    jsentity->SetInternalFieldCount(1);
+
+    // Set all of the accessors
+    jsentity->SetAccessor(String::NewFromUtf8(isolate, "position", String::kInternalizedString), PositionAccessor);
+    jsentity->SetAccessor(String::NewFromUtf8(isolate, "velocity", String::kInternalizedString), PositionAccessor);
+    jsentity->SetAccessor(String::NewFromUtf8(isolate, "rotation", String::kInternalizedString), PositionAccessor);
+    jsentity->SetAccessor(String::NewFromUtf8(isolate, "rotvel", String::kInternalizedString), PositionAccessor);
+
+    // Set all of the functions
+    jsentity->Set(String::NewFromUtf8(isolate, "setCallback", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::SetCallback));
+    jsentity->Set(String::NewFromUtf8(isolate, "markForRemoval", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::Die));
+    jsentity->Set(String::NewFromUtf8(isolate, "applyForce", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::ApplyForce));
+    jsentity->Set(String::NewFromUtf8(isolate, "subscribe", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::MsgSubscribe));
+    jsentity->Set(String::NewFromUtf8(isolate, "broadcast", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::MsgBroadcast2));
+    entity_Template.Reset(isolate, jsentity);
+  } else {
+    jsentity = Local<ObjectTemplate>::New(isolate, entity_Template);
+  }
 
   return handle_scope.Escape(jsentity);
 }

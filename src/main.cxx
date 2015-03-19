@@ -21,23 +21,14 @@ using namespace v8;
 
 std::string readFile(const char *pathname);
 
-v8::Handle<v8::ObjectTemplate> curglobal;
-Local<Context> curcontext;
-
 btDiscreteDynamicsWorld *physics_world;
-
-class Entity;
 
 class EntitySpawnContext {
 public:
-  //Handle<ObjectTemplate> global;
-  //Persistent<Context> context;
-
   Entity *entity;
   Persistent<Object> v8entity;
 };
 
-EntitySpawnContext *curesc;
 std::vector<EntitySpawnContext*> esc_List;
 
 // From v8 examples (shell.cc)
@@ -53,17 +44,16 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
       printf(" ");
     }
     v8::String::Utf8Value str(args[i]);
-    const char* cstr = *str;//ToCString(str);
+    const char* cstr = *str;
     printf("%s", cstr);
   }
   printf("\n");
   fflush(stdout);
 }
 
-void globalEntityGetter(Local<String> property, const PropertyCallbackInfo<Value>& info) {
-  printf("Retrieving the current entity....\n");
+/*void globalEntityGetter(Local<String> property, const PropertyCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(curesc->v8entity);
-}
+}*/
 
 Vec3 ParseVec3Json(const rapidjson::Value& e) {
   Vec3 v;
@@ -72,7 +62,7 @@ Vec3 ParseVec3Json(const rapidjson::Value& e) {
 }
 
 void ParseEntityShapeJson(btCompoundShape *root, const rapidjson::Value& doc) {
-  for (int i=0; i<doc.Size(); i++) {
+  for (unsigned int i=0; i<doc.Size(); i++) {
     const rapidjson::Value& elem = doc[i];
     if (elem.HasMember("primitive")) {
       // It's a primitive...
@@ -127,7 +117,7 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   config_doc.Parse(config_str.c_str());
 
   const char *script_filename = config_doc["scriptFilename"].GetString();
-  printf("Script filename: %s\n", script_filename);
+  printf("Spawning entity w/ script filename: %s\n", script_filename);
 
   // Create the physics shape
   btCompoundShape *shape = new btCompoundShape();
@@ -149,28 +139,12 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   }
 
   // Create a stack-allocated handle scope.
-  //Isolate::Scope isolate_scope(isolate);
   HandleScope handle_scope(isolate);
 
   printf("Creating an esc...\n");
   EntitySpawnContext *esc = new EntitySpawnContext();
   Entity *entity = new Entity();
   esc->entity = entity;
-
-  // Setup a global context (with print...)
-  printf("Setting up a global entity...\n");
-  entity->global = v8::ObjectTemplate::New(isolate);
-  entity->global->Set(v8::String::NewFromUtf8(isolate, "print"),
-		      v8::FunctionTemplate::New(isolate, Print));
-  entity->global->SetAccessor(v8::String::NewFromUtf8(isolate, "entity"),
-			      globalEntityGetter);
-
-  // Create a new context.
-  Handle<Context> context = Context::New(isolate, NULL, entity->global);
-  entity->context.Reset(isolate,context);
-
-  // Enter the context for compiling and running the hello world script.
-  Context::Scope context_scope(context);
 
   // Setup the physics object for it...
   btTransform transform;
@@ -190,8 +164,24 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   physics_world->addRigidBody(body);
 
   // Add it to the ESC
+  entity->global = ObjectTemplate::New(isolate);
+  Handle<Context> context = Context::New(isolate, NULL, entity->global);
+
+  // Enter the context for compiling and running the hello world script.
+  Context::Scope context_scope(context);
+
   Handle<Object> v8entity = Entity::Wrap(entity, isolate);
   esc->v8entity.Reset(isolate,v8entity);
+
+  // Setup a global context (with print...)
+  printf("Setting up a global entity...\n");
+  context->Global()->Set(v8::String::NewFromUtf8(isolate, "print"),
+			 v8::FunctionTemplate::New(isolate, Print)->GetFunction());
+  context->Global()->Set(String::NewFromUtf8(isolate, "entity"),
+			 v8entity);
+
+  // Create a new context.
+  entity->context.Reset(isolate,context);
 
   // Run the stdlib
   {
@@ -202,20 +192,14 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
 
   // Create a string containing the JavaScript source code.
   std::string source_str = readFile(script_filename);
-  printf("We got a source of %i bytes.\n", source_str.length());
+  printf("We got a source of %lu bytes.\n", source_str.length());
   Local<String> source = String::NewFromUtf8(isolate, source_str.c_str());
 
   // Compile the source code.
-  //curcontext = esc->context; // Set the current context
-  curesc = esc;
   Local<Script> script = Script::Compile(source);
 
   // Run the script to get the result.
-  Local<Value> result = script->Run();
-
-  // Convert the result to an UTF8 string and print it.
-  String::Utf8Value utf8(result);
-  printf("Result: %s\n", *utf8);
+  script->Run();
 
   esc_List.push_back(esc);
 }
@@ -278,19 +262,37 @@ public:
   static void MessageReceiver(void *userdata, std::string channel, Handle<Value> message);
 };
 
-std::string jsonStringify(Handle<Value> message) {
-  // Create a new context for this (hrm, probably expensive...)
-  HandleScope handle_scope(Isolate::GetCurrent());
+class JsonStringifyer {
+private:
+  Persistent<Context> _context;
+public:
+  JsonStringifyer();
+  ~JsonStringifyer();
+  std::string jsonStringify(Handle<Value> message);
+};
+
+JsonStringifyer::JsonStringifyer() {
   Local<Context> context = Context::New(Isolate::GetCurrent());
   Context::Scope context_scope(context);
+  _context.Reset(Isolate::GetCurrent(), context);
 
   Local<String> source = String::NewFromUtf8(Isolate::GetCurrent(), "function __internal__json_stringify__tmp(obj) { return JSON.stringify(obj); }");
   Local<Script> script = Script::Compile(source);
   script->Run();
+}
 
-  Handle<Object> global = context->Global();
+JsonStringifyer::~JsonStringifyer() {
+  _context.Reset();
+}
+
+std::string JsonStringifyer::jsonStringify(Handle<Value> message) {
+  // Create a new context for this (hrm, probably expensive...)
+  HandleScope handle_scope(Isolate::GetCurrent());
+  Local<Context> ctx = Local<Context>::New(Isolate::GetCurrent(), _context);
+  Context::Scope context_scope(ctx);
+
+  Handle<Object> global = ctx->Global();
   Handle<Value> fn_val = global->Get(String::NewFromUtf8(Isolate::GetCurrent(), "__internal__json_stringify__tmp"));
-  //Handle<Value> fn_val = global->Get(String::NewFromUtf8(Isolate::GetCurrent(), "JSON.stringify"));
   Handle<Function> fn = Handle<Function>::Cast(fn_val);
   Handle<Value> args[1];
   args[0] = message;
@@ -298,6 +300,16 @@ std::string jsonStringify(Handle<Value> message) {
 
   String::Utf8Value str(result);
   return *str;
+}
+
+JsonStringifyer *json_Stringer = NULL;
+
+// A wrapper around the above class
+std::string jsonStringify(Handle<Value> message) {
+  if (!json_Stringer) {
+    json_Stringer = new JsonStringifyer();
+  }
+  return json_Stringer->jsonStringify(message);
 }
 
 void NetClient::SendMessage(int type, std::string message) {
@@ -321,11 +333,6 @@ void NetClient::MessageReceiver(void *userdata, std::string channel, v8::Handle<
   msg.SerializeToString(&str);
 
   client->SendMessage(0x0101, str);
-  /*unsigned short msgsize=htons(str.length()), msgtype=htons(0x0101);
-  printf("Sending message to %i, size=%X type=%X\n",client->_sockfd, msgsize, msgtype);
-  write(client->_sockfd, &msgsize, 2);
-  write(client->_sockfd, &msgtype, 2);
-  write(client->_sockfd, str.c_str(), str.length());*/
 }
 
 NetClient::NetClient(int sockfd, struct sockaddr_in addr)
@@ -333,9 +340,6 @@ NetClient::NetClient(int sockfd, struct sockaddr_in addr)
   _sockfd = sockfd;
   _addr = addr;
   _is_open = true;
-
-  // Send a quick hello...
-  //write(_sockfd, "Hello!", 7);
 }
 
 void NetClient::update()
@@ -351,8 +355,6 @@ void NetClient::update()
   FD_SET(_sockfd, &set);
   int retval = select(FD_SETSIZE, &set, NULL, NULL, &timeout);
   if (retval == 1) {
-    printf("Got a message!\n");
-
     // Read the header
     unsigned short msgsize, msgtype;
     int nread = read(_sockfd, &msgsize, 2);
@@ -366,19 +368,23 @@ void NetClient::update()
     nread = read(_sockfd, &msgtype, 2);
     msgsize = ntohs(msgsize);
     msgtype = ntohs(msgtype);
-    //msgsize = ((msgsize&0xFF)<<8) | ((msgsize&0xFF00)>>8);
 
     // Read the body
-    printf("%X bytes of body (type=%X)...\n", msgsize, msgtype);
     char *buf = new char[msgsize];
     nread = read(_sockfd, buf, msgsize);
-    printf("Read %X bytes from network.\n",nread);
 
     // Parse the body
     if (msgtype == 0x0001) {
       worldbox::Hello msg;
       msg.ParseFromArray(buf, msgsize);
-      printf("Got hello with version=%i\n", msg.version());
+    } else if (msgtype == 0x0002) {
+      worldbox::GlobalWorldSettings msg;
+      msg.ParseFromArray(buf, msgsize);
+      if (msg.has_physics_gravity()) {
+	Vec3 grav;
+	grav.Set(msg.physics_gravity());
+	physics_world->setGravity(grav.ToBtVec());
+      }
     } else if (msgtype == 0x0101) {
       // MsgBroadcast
       worldbox::MsgBroadcast msg;
@@ -394,7 +400,7 @@ void NetClient::update()
       } else {
 	// Subscribe to the given channel...
 	printf("Subscribing client to channel %s...\n", msg.channel().c_str());
-	MessageSubscriber sub;// = new MessageSubscriber();
+	MessageSubscriber sub;
 	sub.channel_name = msg.channel();
 	sub._userdata = this;
 	sub._cb = NetClient::MessageReceiver;
@@ -403,18 +409,12 @@ void NetClient::update()
     } else if (msgtype == 0x0201) {
       // SpawnEntity
       worldbox::SpawnEntity msg;
-      bool retval = msg.ParseFromArray(buf, msgsize);
-      printf("Return val: %i\n",retval?1:0);
-      for (int i=0; i<msgsize; i++) {
-	printf("%02X",buf[i]);
-      }
-      printf("\n");
+      msg.ParseFromArray(buf, msgsize);
       Vec3 pos;
       if (msg.has_start_position()) {
 	pos.SetXYZ(msg.start_position().x(),
 		   msg.start_position().y(),
 		   msg.start_position().z());
-	printf("Position: %f,%f,%f -> %f,%f,%f\n", msg.start_position().x(), msg.start_position().y(), msg.start_position().z(), pos.GetX(), pos.GetY(), pos.GetZ());
       }
       std::string config_str;
       if (msg.has_cfg_filename()) {
@@ -427,11 +427,6 @@ void NetClient::update()
     }
 
     delete buf;
-
-    /*char buf[256];
-    int nread = read(_sockfd, buf, 256);
-    buf[nread] = 0;
-    printf("%s\n",buf);*/
   }
 }
 
@@ -450,6 +445,7 @@ void NetServer::startServer()
   _server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (_server_sockfd < 0) {
     // Error...
+    fprintf(stderr, "Unable to get a socket to start server on.\n");
   }
   struct sockaddr_in address;
   bzero((char*)&address, sizeof(address));
@@ -463,6 +459,7 @@ void NetServer::startServer()
 
   if (bind(_server_sockfd, (struct sockaddr *)&address, sizeof(address)) < 0) {
     // Error...
+    fprintf(stderr, "Unable to bind on server socket.\n");
   }
   listen(_server_sockfd, 5);
 }
@@ -484,6 +481,7 @@ void NetServer::update()
     int sockfd = accept(_server_sockfd, (struct sockaddr*)&addr, &len);
     if (sockfd < 0) {
       // Error...
+      fprintf(stderr, "Unable to accept client connection.\n");
     }
 
     // Deal with the client...
@@ -506,7 +504,7 @@ public:
   int GetOutputEncoding() { return 0; };
   WriteResult WriteAsciiChunk(char *data, int size);
   myv8FileOutputStream(const char *filename);
-  ~myv8FileOutputStream();
+  ~myv8FileOutputStream() { /* No-op */ };
 };
 
 myv8FileOutputStream::myv8FileOutputStream(const char *filename) {
@@ -514,10 +512,6 @@ myv8FileOutputStream::myv8FileOutputStream(const char *filename) {
   if (!_f) {
     fprintf(stderr, "Error opening %s for writing...\n", filename);
   }
-}
-
-myv8FileOutputStream::~myv8FileOutputStream() {
-  // Do nothing...
 }
 
 void myv8FileOutputStream::EndOfStream() {
@@ -529,14 +523,11 @@ OutputStream::WriteResult myv8FileOutputStream::WriteAsciiChunk(char *data, int 
   return kContinue;
 }
 
-//HeapProfiler *heap_Profiler;
-
 void DumpHeapProfile(const char *filename)
 {
   HandleScope handle_scope(Isolate::GetCurrent());
   HeapProfiler *heap_Profiler = Isolate::GetCurrent()->GetHeapProfiler();
   const HeapSnapshot *snap = heap_Profiler->TakeHeapSnapshot(String::NewFromUtf8(Isolate::GetCurrent(),"snap"));
-  //HeapSnapshot snap;
   myv8FileOutputStream out(filename);
   snap->Serialize(&out, HeapSnapshot::SerializationFormat::kJSON);
 }
@@ -555,25 +546,7 @@ int main(int argc, char **argv)
   btBroadphaseInterface *pairCache = new btDbvtBroadphase();
   btSequentialImpulseConstraintSolver *solver = new btSequentialImpulseConstraintSolver();
   physics_world = new btDiscreteDynamicsWorld(dispatcher, pairCache, solver, collisionConfig);
-  physics_world->setGravity(btVector3(0,-10,0));
-
-#if 0
-  // Create the ground...
-  {
-    btBoxShape *shape = new btBoxShape(btVector3(50,50,50));
-    btTransform transform;
-    transform.setIdentity();
-    transform.setOrigin(btVector3(0,-50,0));
-    btVector3 localInertia(0,0,0);
-    double mass = 0.0; // Massless...
-    //shape->calculateLocalInertia(mass,localInertia)
-    btDefaultMotionState *motionstate = new btDefaultMotionState(transform);
-    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass,motionstate,shape,localInertia);
-    rbInfo.m_friction = 1.0;
-    btRigidBody *body = new btRigidBody(rbInfo);
-    physics_world->addRigidBody(body);
-  }
-#endif
+  physics_world->setGravity(btVector3(0,0,0));
 
   // Create a new Isolate and make it the current one.
   Isolate* isolate = Isolate::New();
@@ -585,19 +558,15 @@ int main(int argc, char **argv)
   {
     Isolate::Scope isolate_scope(isolate);
 
-    //SpawnEntity("test.js", isolate);
-    //SpawnEntity("test2.js", isolate);
-
     // Run the game loop
     double tgt_dt = 0.05;
-    //time_t last_tm = time(NULL);
     struct timespec last_tm;
     clock_gettime(CLOCK_MONOTONIC, &last_tm);
     double dt = 0.01;
     int loopnum = 0;
     while (1) {
       for (std::vector<EntitySpawnContext*>::iterator it=esc_List.begin() ; it!=esc_List.end(); /*noop*/) {
-        curesc = *it;
+        EntitySpawnContext *curesc = *it;
 
 	// Skip if we don't have an update callback
 	if (!curesc->entity->functions.count("update")) {
@@ -607,15 +576,12 @@ int main(int argc, char **argv)
 
 	HandleScope handle_scope(isolate);
 	Handle<Value> fnargs[1];
-	//fnargs[0] = esc->v8entity;//entity;
 	fnargs[0] = Number::New(isolate, dt);
 	Local<Function> fn = Local<Function>::New(isolate, curesc->entity->functions["update"]);
 	Local<Context> ctx = Local<Context>::New(isolate, curesc->entity->context);
 
 	TryCatch trycatch(isolate);
-	printf("About to run function...\n");
-	Local<Value> v = fn->Call(ctx->Global(), 1, fnargs);
-	printf("%i\n",trycatch.HasCaught()?1:0);
+	fn->Call(ctx->Global(), 1, fnargs);
 	if (trycatch.HasCaught()) {
 	  Local<Value> exception = trycatch.Exception();
 	  String::Utf8Value exception_str(exception);
@@ -624,7 +590,7 @@ int main(int argc, char **argv)
 
 	if (curesc->entity->_toremove) {
 	  // TODO: Clear all the persistent stuff...
-	  printf("Removing...\n");
+	  printf("Removing entity...\n");
 	  DeleteEntity(curesc);
 	  it = esc_List.erase(it);
 	} else {
@@ -647,7 +613,6 @@ int main(int argc, char **argv)
  	clock_gettime(CLOCK_MONOTONIC, &curtime);
 	dt = curtime.tv_sec-last_tm.tv_sec + (double)(curtime.tv_nsec-last_tm.tv_nsec)/1000000000.0;
       }
-      //printf("dt=%.3f\n",dt);
       last_tm = curtime;
       loopnum++;
       fflush(stdout);
@@ -656,7 +621,7 @@ int main(int argc, char **argv)
 	// Print out heap info
 	HeapStatistics heap;
 	isolate->GetHeapStatistics(&heap);
-	printf("V8 is using %i of %i bytes on the heap.\n", heap.used_heap_size(), heap.total_heap_size());
+	printf("V8 is using %lu of %lu bytes on the heap.\n", heap.used_heap_size(), heap.total_heap_size());
       }
 
       if (loopnum%1000 == 0) {

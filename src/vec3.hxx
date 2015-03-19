@@ -4,6 +4,8 @@
 #include<include/v8.h>
 #include<bullet/btBulletDynamicsCommon.h>
 
+#include "net/messages.pb.h"
+
 class Vec3 {
 private:
   double _x, _y, _z;
@@ -23,6 +25,7 @@ public:
   double GetX() { return _x; };
   double GetY() { return _y; };
   double GetZ() { return _z; };
+  void Set(worldbox::Vec3 v);
   void Set(btVector3 v);
   btVector3 ToBtVec();
 

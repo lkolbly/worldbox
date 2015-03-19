@@ -33,6 +33,12 @@ class WorldBox:
         msg.version = 1
         self.sendMessage(0x01, msg)
 
+        msg = messages_pb2.GlobalWorldSettings()
+        msg.physics_gravity.x = 0.0
+        msg.physics_gravity.y = -10.0
+        msg.physics_gravity.z = 0.0
+        self.sendMessage(0x02, msg)
+
         msg = messages_pb2.MsgSubscribe()
         msg.channel = "kartCreated"
         self.sendMessage(0x0102, msg)
@@ -127,7 +133,6 @@ class WorldBox:
             elif msg.channel == "projectileLocation":
                 for c in self.clients:
                     c.setProjectileLocation(obj)
-            #print "Got message: %s"%msg.json
         pass
 
     def sendMessage(self, msgType, msg):
@@ -138,30 +143,14 @@ class WorldBox:
         pass
 
     def createProjectile(self, pos, rot):
-        #self.addClient(None)
-        #return
         msg = messages_pb2.SpawnEntity()
         msg.cfg_filename = "examples/karts/game_assets/projectile.json"
         print pos
         msg.start_position.x = pos["x"]
         msg.start_position.y = pos["y"]+1.5
         msg.start_position.z = pos["z"]
-        #msg.start_position.x = 20.0
-        #msg.start_position.y = 10.0
-        #msg.start_position.z = 5.0
-        #msg.start_position.x = 1.0#random.random()*20.0-10.0
-        #msg.start_position.y = 0.0
-        #msg.start_position.z = random.random()*20.0-10.0
         self.sendMessage(0x0201, msg)
         self.expecting_projectiles.append({"x": pos["x"], "z": pos["z"], "rot": rot})
-
-        # Check it...
-        msg2 = messages_pb2.SpawnEntity()
-        msg2.ParseFromString(msg.SerializeToString())
-        open("a", "w").write(msg.SerializeToString())
-        print binascii.hexlify(msg.SerializeToString())
-        print msg2.start_position.x, msg2.start_position.y,msg2.start_position.z
-        pass
 
     def addClient(self, cb):
         msg = messages_pb2.SpawnEntity()

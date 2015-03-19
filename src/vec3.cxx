@@ -4,8 +4,14 @@
 #include<bullet/btBulletDynamicsCommon.h>
 
 #include "vec3.hxx"
+#include "net/messages.pb.h"
 
 using namespace v8;
+
+void Vec3::Set(worldbox::Vec3 v)
+{
+  SetXYZ(v.x(), v.y(), v.z());
+}
 
 void Vec3::Set(btVector3 v)
 {
@@ -38,7 +44,6 @@ void Vec3::GetXYZ(Local<Name> name, const PropertyCallbackInfo<Value>& info)
   Vec3 *v = (Vec3*)field->Value();
 
   std::string str(*String::Utf8Value(name));
-  printf("%s\n", str.c_str());
 
   double val = 0.0;
   if (strcmp(str.c_str(), "x") == 0) {
