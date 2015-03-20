@@ -1,11 +1,6 @@
-// Make up an ID for ourselves & notify the proxy
-var my_id = Math.round(Math.random()*1000000);
-print("Hello...");
-entity.broadcast("kartCreated", {id: my_id});
-
 var controls = {throttle: 0, steer: 0};
 
-entity.subscribe("controls_"+my_id, function(msg) {
+entity.subscribe("controls_"+entity.id, function(msg) {
     msg = JSON.parse(msg); // We have to parse it since it's from the 'outside'
     if (msg.hasOwnProperty("throttle")) controls.throttle = msg.throttle;
     if (msg.hasOwnProperty("steer")) controls.steer = msg.steer;
@@ -13,20 +8,19 @@ entity.subscribe("controls_"+my_id, function(msg) {
     if (msg.hasOwnProperty("shoot")) {
 	if (msg.shoot === true) {
 	    var p = {x: entity.position.x, y: entity.position.y, z: entity.position.z};
-	    //var p = {x: 0.0, y: 0.0, z: 0.0};
-	    entity.broadcast("requestProjectile", {position: p, rotation: {x: entity.rotation.x, y: entity.rotation.y, z: entity.rotation.z}});
+	    entity.spawnEntity("examples/karts/game_assets/projectile.json", JSON.stringify({rot: {x: entity.rotation.x, y: entity.rotation.y, z: entity.rotation.z}}), p.x,p.y+1.5,p.z, 0.0,0.0,0.0);
 	    msg.shoot = false;
 	}
     }
 });
 
-entity.subscribe("kill_"+my_id, function(msg) {
+entity.subscribe("kill_"+entity.id, function(msg) {
     entity.markForRemoval();
 });
 
 entity.setCallback("update", function(dt) {
     if (entity.position.y < -10.0) {
-	entity.broadcast("kartDestroyed", {id: my_id});
+	entity.broadcast("kartDestroyed", {id: entity.id});
 	entity.markForRemoval();
 	return;
     }
@@ -45,15 +39,6 @@ entity.setCallback("update", function(dt) {
 	entity.applyForce(controls.steer,0.0,0.0, 0.0,0.0,-1.0);
     }
 
-    // Determine our orientation
-    var rotation = {x: entity.rotation.x, y: entity.rotation.y, z: entity.rotation.z};
-    var len = Math.sqrt(rotation.x*rotation.x + rotation.y*rotation.y + rotation.z*rotation.z);
-    if (len != 0) {
-	rotation.x /= len;
-	rotation.y /= len;
-	rotation.z /= len;
-    }
-
     // Apply an air friction
     var FRIC = 1.0;
     var vel = {
@@ -62,7 +47,4 @@ entity.setCallback("update", function(dt) {
 	z: -entity.velocity.z*FRIC
     };
     entity.applyForce(vel.x, vel.y, vel.z, 0.0,0.0,0.0);
-
-    // Update the player with our location
-    entity.broadcast("kartLocation", {id: my_id, position: entity.position, rotation: entity.rotation});
 });

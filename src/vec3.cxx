@@ -25,6 +25,13 @@ void Vec3::SetXYZ(double x, double y, double z)
   _z = z;
 }
 
+void Vec3::ToProtobuf(worldbox::Vec3& v)
+{
+  v.set_x(_x);
+  v.set_y(_y);
+  v.set_z(_z);
+}
+
 btVector3 Vec3::ToBtVec()
 {
   return btVector3(_x, _y, _z);

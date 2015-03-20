@@ -1,4 +1,5 @@
 {
+    "entityType": "projectile",
     "scriptFilename": "examples/karts/game_assets/projectile.js",
     "physics": {
 	"mass": 10.0,

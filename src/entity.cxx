@@ -4,8 +4,11 @@
 
 #include "entity.hxx"
 #include "messaging.hxx"
+#include "util.hxx"
 
 using namespace v8;
+
+void SpawnEntity(std::string config_str, Vec3 position, int64_t id, std::string init_cfg_str, Isolate *isolate);
 
 // Note: We assume we're all under the same isolate
 class EntityMessageSubscriber {
@@ -113,10 +116,47 @@ void Entity::MsgSubscribe(const FunctionCallbackInfo<Value>& args) {
   MsgAddSubscriber(subscriber);
 }
 
+void Entity::SpawnEntity2(const FunctionCallbackInfo<Value>& args) {
+  std::string config_json_filename = *String::Utf8Value(args[0]);
+  std::string init_cfg_str = *String::Utf8Value(args[1]);
+
+  double x = args[2]->NumberValue();
+  double y = args[3]->NumberValue();
+  double z = args[4]->NumberValue();
+  double rx = args[5]->NumberValue();
+  double ry = args[6]->NumberValue();
+  double rz = args[7]->NumberValue();
+
+  Vec3 v;
+  v.SetXYZ(x,y,z);
+
+  int64_t lo = rand();
+  int64_t hi = rand();
+  int64_t id = (hi<<32) | lo;
+
+  SpawnEntity(readFile(config_json_filename.c_str()), v, id, init_cfg_str, Isolate::GetCurrent());
+
+  char *s = new char[32];
+  snprintf(s,32,"%li", id);
+  args.GetReturnValue().Set(String::NewFromUtf8(Isolate::GetCurrent(), s));
+  delete s;
+}
+
 void Entity::MsgBroadcast2(const FunctionCallbackInfo<Value>& args) {
   std::string channel_name = *String::Utf8Value(args[0]);
 
   MsgBroadcast(channel_name, args[1]);
+}
+
+void Entity::IdAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
+  // Unwrap the entity
+  Handle<External> field = Handle<External>::Cast(info.Holder()->GetInternalField(0));
+  Entity *centity = (Entity*)field->Value();
+
+  char *s = new char[32];
+  snprintf(s, 32, "%li", centity->_id);
+  info.GetReturnValue().Set(String::NewFromUtf8(Isolate::GetCurrent(), s));
+  delete s;
 }
 
 void Entity::PositionAccessor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
@@ -167,6 +207,7 @@ Handle<ObjectTemplate> Entity::MakeEntityTemplate(Isolate *isolate) {
     jsentity->SetInternalFieldCount(1);
 
     // Set all of the accessors
+    jsentity->SetAccessor(String::NewFromUtf8(isolate, "id", String::kInternalizedString), IdAccessor);
     jsentity->SetAccessor(String::NewFromUtf8(isolate, "position", String::kInternalizedString), PositionAccessor);
     jsentity->SetAccessor(String::NewFromUtf8(isolate, "velocity", String::kInternalizedString), PositionAccessor);
     jsentity->SetAccessor(String::NewFromUtf8(isolate, "rotation", String::kInternalizedString), PositionAccessor);
@@ -178,6 +219,8 @@ Handle<ObjectTemplate> Entity::MakeEntityTemplate(Isolate *isolate) {
     jsentity->Set(String::NewFromUtf8(isolate, "applyForce", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::ApplyForce));
     jsentity->Set(String::NewFromUtf8(isolate, "subscribe", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::MsgSubscribe));
     jsentity->Set(String::NewFromUtf8(isolate, "broadcast", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::MsgBroadcast2));
+    jsentity->Set(String::NewFromUtf8(isolate, "spawnEntity", String::kInternalizedString), FunctionTemplate::New(isolate, Entity::SpawnEntity2));
+
     entity_Template.Reset(isolate, jsentity);
   } else {
     jsentity = Local<ObjectTemplate>::New(isolate, entity_Template);

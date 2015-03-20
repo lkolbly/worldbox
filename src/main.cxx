@@ -2,9 +2,6 @@
 #include<vector>
 #include<cstdio>
 #include<cerrno>
-#include<sys/types.h> 
-#include<sys/socket.h>
-#include<netinet/in.h>
 #include<unistd.h>
 #include<include/v8.h>
 #include<include/v8-profiler.h>
@@ -16,12 +13,14 @@
 #include "entity.hxx"
 #include "messaging.hxx"
 #include "net/messages.pb.h"
+#include "net.hxx"
+#include "util.hxx"
 
 using namespace v8;
 
-std::string readFile(const char *pathname);
-
 btDiscreteDynamicsWorld *physics_world;
+
+NetServer net;
 
 class EntitySpawnContext {
 public:
@@ -109,15 +108,31 @@ void ParseEntityShapeJson(btCompoundShape *root, const rapidjson::Value& doc) {
   }
 }
 
+// Tell all the network clients that there's a new entity...
+void NotifyOfSpawnedEntity(std::string config_str, int64_t id, Vec3 pos) {
+  worldbox::EntitySpawned msg;
+  msg.set_id(id);
+  msg.set_entity_type(config_str);
+  worldbox::Vec3 *v = new worldbox::Vec3();
+  pos.ToProtobuf(*v);
+  msg.set_allocated_position(v);
+
+  std::string str;
+  msg.SerializeToString(&str);
+  net.SendMessageToAll(0x0201, str);
+}
+
 // filename is the filename of the JS file that runs the entity
 // Each entity JS script is run in a different context so they don't interfere
-void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
+void SpawnEntity(std::string config_str, Vec3 position, int64_t id, std::string init_cfg_str, Isolate *isolate) {
   // Parse the JSON file, figure out what we need to figure out
   rapidjson::Document config_doc;
   config_doc.Parse(config_str.c_str());
 
   const char *script_filename = config_doc["scriptFilename"].GetString();
   printf("Spawning entity w/ script filename: %s\n", script_filename);
+
+  const char *entity_type = config_doc["entityType"].GetString();
 
   // Create the physics shape
   btCompoundShape *shape = new btCompoundShape();
@@ -144,6 +159,7 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   printf("Creating an esc...\n");
   EntitySpawnContext *esc = new EntitySpawnContext();
   Entity *entity = new Entity();
+  entity->_id = id;
   esc->entity = entity;
 
   // Setup the physics object for it...
@@ -179,6 +195,8 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
 			 v8::FunctionTemplate::New(isolate, Print)->GetFunction());
   context->Global()->Set(String::NewFromUtf8(isolate, "entity"),
 			 v8entity);
+  context->Global()->Set(String::NewFromUtf8(isolate, "config"),
+			 String::NewFromUtf8(isolate, init_cfg_str.c_str()));
 
   // Create a new context.
   entity->context.Reset(isolate,context);
@@ -202,6 +220,16 @@ void SpawnEntity(std::string config_str, Vec3 position, Isolate *isolate) {
   script->Run();
 
   esc_List.push_back(esc);
+
+  NotifyOfSpawnedEntity(std::string(entity_type), id, position);
+}
+
+Entity *GetEntityById(int64_t id) {
+  for (unsigned int i=0; i<esc_List.size(); i++) {
+    EntitySpawnContext *esc = esc_List[i];
+    if (esc->entity->_id == id) return esc->entity;
+  }
+  return NULL;
 }
 
 void DeleteEntity(EntitySpawnContext *esc) {
@@ -224,275 +252,6 @@ void DeleteEntity(EntitySpawnContext *esc) {
   // Remove our bookkeeping structures...
   delete esc->entity;
   delete esc;
-}
-
-std::string readFile(const char *pathname)
-{
-  std::FILE *f = std::fopen(pathname, "r");
-  if (!f) {
-    throw(errno);
-  }
-  std::string s;
-  std::fseek(f, 0, SEEK_END);
-  s.resize(std::ftell(f));
-  std::rewind(f);
-  std::fread(&s[0], 1, s.size(), f);
-  std::fclose(f);
-  return s;
-}
-
-/**
- * The network protocol is simple. Each message is preceeded by a 4-byte header.
- * The fields of this header are:
- * - 2 bytes: Size of message, in bytes.
- * - 2 bytes: The message type ID.
- */
-class NetClient {
-private:
-  int _sockfd;
-  struct sockaddr_in _addr;
-  bool _is_open;
-
-public:
-  NetClient(int sockfd, struct sockaddr_in addr);
-  void update();
-  void SendMessage(int type, std::string message);
-
-  // Internal messaging...
-  static void MessageReceiver(void *userdata, std::string channel, Handle<Value> message);
-};
-
-class JsonStringifyer {
-private:
-  Persistent<Context> _context;
-public:
-  JsonStringifyer();
-  ~JsonStringifyer();
-  std::string jsonStringify(Handle<Value> message);
-};
-
-JsonStringifyer::JsonStringifyer() {
-  Local<Context> context = Context::New(Isolate::GetCurrent());
-  Context::Scope context_scope(context);
-  _context.Reset(Isolate::GetCurrent(), context);
-
-  Local<String> source = String::NewFromUtf8(Isolate::GetCurrent(), "function __internal__json_stringify__tmp(obj) { return JSON.stringify(obj); }");
-  Local<Script> script = Script::Compile(source);
-  script->Run();
-}
-
-JsonStringifyer::~JsonStringifyer() {
-  _context.Reset();
-}
-
-std::string JsonStringifyer::jsonStringify(Handle<Value> message) {
-  // Create a new context for this (hrm, probably expensive...)
-  HandleScope handle_scope(Isolate::GetCurrent());
-  Local<Context> ctx = Local<Context>::New(Isolate::GetCurrent(), _context);
-  Context::Scope context_scope(ctx);
-
-  Handle<Object> global = ctx->Global();
-  Handle<Value> fn_val = global->Get(String::NewFromUtf8(Isolate::GetCurrent(), "__internal__json_stringify__tmp"));
-  Handle<Function> fn = Handle<Function>::Cast(fn_val);
-  Handle<Value> args[1];
-  args[0] = message;
-  Handle<Value> result = fn->Call(global, 1, args);
-
-  String::Utf8Value str(result);
-  return *str;
-}
-
-JsonStringifyer *json_Stringer = NULL;
-
-// A wrapper around the above class
-std::string jsonStringify(Handle<Value> message) {
-  if (!json_Stringer) {
-    json_Stringer = new JsonStringifyer();
-  }
-  return json_Stringer->jsonStringify(message);
-}
-
-void NetClient::SendMessage(int type, std::string message) {
-  unsigned short msgsize=htons(message.length()), msgtype=htons(type);
-  write(_sockfd, &msgsize, 2);
-  write(_sockfd, &msgtype, 2);
-  write(_sockfd, message.c_str(), message.length());
-}
-
-void NetClient::MessageReceiver(void *userdata, std::string channel, v8::Handle<v8::Value> message) {
-  NetClient *client = (NetClient*)userdata;
-  if (!client->_is_open) return;
-
-  // JSON stringify the message, then send it...
-  std::string msg_str = jsonStringify(message);
-
-  worldbox::MsgBroadcast msg;
-  msg.set_json(msg_str);
-  msg.set_channel(channel);
-  std::string str;
-  msg.SerializeToString(&str);
-
-  client->SendMessage(0x0101, str);
-}
-
-NetClient::NetClient(int sockfd, struct sockaddr_in addr)
-{
-  _sockfd = sockfd;
-  _addr = addr;
-  _is_open = true;
-}
-
-void NetClient::update()
-{
-  if (!_is_open) return;
-
-  // See if there are any messages waiting for us
-  struct timeval timeout;
-  timeout.tv_sec = 0;
-  timeout.tv_usec = 0;
-  fd_set set;
-  FD_ZERO(&set);
-  FD_SET(_sockfd, &set);
-  int retval = select(FD_SETSIZE, &set, NULL, NULL, &timeout);
-  if (retval == 1) {
-    // Read the header
-    unsigned short msgsize, msgtype;
-    int nread = read(_sockfd, &msgsize, 2);
-    if (nread == 0) {
-      printf("Closing connection...\n");
-      _is_open = false;
-      close(_sockfd);
-      return;
-      while (1);
-    }
-    nread = read(_sockfd, &msgtype, 2);
-    msgsize = ntohs(msgsize);
-    msgtype = ntohs(msgtype);
-
-    // Read the body
-    char *buf = new char[msgsize];
-    nread = read(_sockfd, buf, msgsize);
-
-    // Parse the body
-    if (msgtype == 0x0001) {
-      worldbox::Hello msg;
-      msg.ParseFromArray(buf, msgsize);
-    } else if (msgtype == 0x0002) {
-      worldbox::GlobalWorldSettings msg;
-      msg.ParseFromArray(buf, msgsize);
-      if (msg.has_physics_gravity()) {
-	Vec3 grav;
-	grav.Set(msg.physics_gravity());
-	physics_world->setGravity(grav.ToBtVec());
-      }
-    } else if (msgtype == 0x0101) {
-      // MsgBroadcast
-      worldbox::MsgBroadcast msg;
-      msg.ParseFromArray(buf, msgsize);
-      HandleScope handle_scope(Isolate::GetCurrent());
-      MsgBroadcast(msg.channel(), String::NewFromUtf8(Isolate::GetCurrent(),msg.json().c_str()));
-    } else if (msgtype == 0x0102) {
-      // MsgSubscribe
-      worldbox::MsgSubscribe msg;
-      msg.ParseFromArray(buf, msgsize);
-      if (msg.unsubscribe()) {
-	// How do we unsubscribe?
-      } else {
-	// Subscribe to the given channel...
-	printf("Subscribing client to channel %s...\n", msg.channel().c_str());
-	MessageSubscriber sub;
-	sub.channel_name = msg.channel();
-	sub._userdata = this;
-	sub._cb = NetClient::MessageReceiver;
-	MsgAddSubscriber(sub);
-      }
-    } else if (msgtype == 0x0201) {
-      // SpawnEntity
-      worldbox::SpawnEntity msg;
-      msg.ParseFromArray(buf, msgsize);
-      Vec3 pos;
-      if (msg.has_start_position()) {
-	pos.SetXYZ(msg.start_position().x(),
-		   msg.start_position().y(),
-		   msg.start_position().z());
-      }
-      std::string config_str;
-      if (msg.has_cfg_filename()) {
-	config_str = readFile(msg.cfg_filename().c_str());
-      }
-      if (msg.has_cfg_json()) {
-	config_str = msg.cfg_json();
-      }
-      SpawnEntity(config_str, pos, Isolate::GetCurrent());
-    }
-
-    delete buf;
-  }
-}
-
-class NetServer {
-private:
-  int _server_sockfd;
-  std::vector<NetClient*> _clients;
-
-public:
-  void startServer();
-  void update();
-};
-
-void NetServer::startServer()
-{
-  _server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (_server_sockfd < 0) {
-    // Error...
-    fprintf(stderr, "Unable to get a socket to start server on.\n");
-  }
-  struct sockaddr_in address;
-  bzero((char*)&address, sizeof(address));
-  int port = 15538;
-  address.sin_family = AF_INET;
-  address.sin_addr.s_addr = INADDR_ANY;
-  address.sin_port = htons(port);
-
-  int optval = 1;
-  setsockopt(_server_sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-
-  if (bind(_server_sockfd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-    // Error...
-    fprintf(stderr, "Unable to bind on server socket.\n");
-  }
-  listen(_server_sockfd, 5);
-}
-
-void NetServer::update()
-{
-  // Select on the listening socket, see if we should accept
-  struct timeval timeout;
-  timeout.tv_sec = 0;
-  timeout.tv_usec = 0;
-  fd_set set;
-  FD_ZERO(&set);
-  FD_SET(_server_sockfd, &set);
-  int retval = select(FD_SETSIZE, &set, NULL, NULL, &timeout);
-  if (retval == 1) {
-    // We can accept...
-    socklen_t len;
-    struct sockaddr_in addr; // Client's address
-    int sockfd = accept(_server_sockfd, (struct sockaddr*)&addr, &len);
-    if (sockfd < 0) {
-      // Error...
-      fprintf(stderr, "Unable to accept client connection.\n");
-    }
-
-    // Deal with the client...
-    NetClient *client = new NetClient(sockfd, addr);
-    _clients.push_back(client);
-  }
-
-  // Update all the clients
-  for (std::vector<NetClient*>::iterator it=_clients.begin(); it!=_clients.end(); ++it) {
-    (*it)->update();
-  }
 }
 
 class myv8FileOutputStream : public OutputStream {
@@ -552,7 +311,7 @@ int main(int argc, char **argv)
   Isolate* isolate = Isolate::New();
 
   // Start the network server...
-  NetServer net;
+  //NetServer net;
   net.startServer();
 
   {
@@ -602,14 +361,14 @@ int main(int argc, char **argv)
       physics_world->stepSimulation(dt, 100, 1.0/100.0);
 
       // Update the network
-      net.update();
+      net.update(dt);
 
       // Update the timestep
       struct timespec curtime;
       clock_gettime(CLOCK_MONOTONIC, &curtime);
       dt = curtime.tv_sec-last_tm.tv_sec + (double)(curtime.tv_nsec-last_tm.tv_nsec)/1000000000.0;
       while (tgt_dt > dt) {
-	net.update(); // Alternatively, we could sleep
+	//net.update(); // Alternatively, we could sleep
  	clock_gettime(CLOCK_MONOTONIC, &curtime);
 	dt = curtime.tv_sec-last_tm.tv_sec + (double)(curtime.tv_nsec-last_tm.tv_nsec)/1000000000.0;
       }

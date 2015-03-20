@@ -1,9 +1,15 @@
 {
+    "entityType": "kart",
     "scriptFilename": "examples/karts/game_assets/kart.js",
     "physics": {
 	"mass": 1.0,
 	"shape": [
 	    {"primitive": "box", "size": {"x": 1.0, "y": 1.0, "z": 2.0}, "position": {"x": 0.0, "y": 0.5, "z": 0.0}}
 	]
-    }
+    },
+    "controls": [
+	{"name": "throttle", "type": "double", "min": -20.0, "max": 20.0},
+	{"name": "steer", "type": "double", "min": -20.0, "max": 20.0},
+	{"name": "shoot", "type": "oneshot"}
+    ]
 }

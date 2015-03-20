@@ -40,14 +40,6 @@ class WorldBox:
         self.sendMessage(0x02, msg)
 
         msg = messages_pb2.MsgSubscribe()
-        msg.channel = "kartCreated"
-        self.sendMessage(0x0102, msg)
-
-        msg = messages_pb2.MsgSubscribe()
-        msg.channel = "kartLocation"
-        self.sendMessage(0x0102, msg)
-
-        msg = messages_pb2.MsgSubscribe()
         msg.channel = "kartDestroyed"
         self.sendMessage(0x0102, msg)
 
@@ -56,15 +48,7 @@ class WorldBox:
         self.sendMessage(0x0102, msg)
 
         msg = messages_pb2.MsgSubscribe()
-        msg.channel = "projectileCreated"
-        self.sendMessage(0x0102, msg)
-
-        msg = messages_pb2.MsgSubscribe()
         msg.channel = "projectileDestroyed"
-        self.sendMessage(0x0102, msg)
-
-        msg = messages_pb2.MsgSubscribe()
-        msg.channel = "projectileLocation"
         self.sendMessage(0x0102, msg)
 
         msg = messages_pb2.SpawnEntity()
@@ -75,6 +59,7 @@ class WorldBox:
         # but we're still waiting to give them said entity.
         self.expecting_clients = []
         self.karts = {}
+        self.projectiles = {}
         self.clients = [] # All clients
         self.expecting_projectiles = []
 
@@ -91,48 +76,42 @@ class WorldBox:
         while len(body) < msg_size:
             #print "receiving %i..."%(msg_size-len(body))
             body += self.socket.recv(msg_size-len(body))
+        if msg_type == 0x0201:
+            msg = messages_pb2.EntitySpawned()
+            msg.ParseFromString(body)
+            if "terrain" == msg.entity_type:
+                pass
+            if "kart" == msg.entity_type:
+                expecting = self.expecting_clients.pop(0)
+                expecting.gotEntity(str(msg.id))
+                self.karts[str(msg.id)] = expecting
+
+                msg2 = messages_pb2.GetEntityLocation()
+                msg2.id = msg.id
+                self.sendMessage(0x0202, msg2)
+            if "projectile" == msg.entity_type:
+                msg2 = messages_pb2.GetEntityLocation()
+                msg2.id = msg.id
+                self.sendMessage(0x0202, msg2)
+                self.projectiles[str(msg.id)] = True
+
+        if msg_type == 0x0202:
+            msg = messages_pb2.EntityLocation()
+            msg.ParseFromString(body)
+            if str(msg.id) in self.karts:
+                self.karts[str(msg.id)].updateKartLocation(msg)
+                for c in self.clients:
+                    c.updateOtherKartLocation(msg)
+            else: # It must be a projectile
+                for c in self.clients:
+                    c.setProjectileLocation(msg)
         if msg_type == 0x0101:
             msg = messages_pb2.MsgBroadcast()
             msg.ParseFromString(body)
-            #print msg.channel
             obj = json.loads(msg.json)
-            if msg.channel == "kartCreated":
-                # Give this kart to the first guy
-                expecting = self.expecting_clients.pop(0)
-                expecting.gotEntity(obj["id"])
-                self.karts[obj["id"]] = expecting
-            elif msg.channel == "kartLocation":
-                if obj["id"] in self.karts:
-                    self.karts[obj["id"]].updateKartLocation(obj)
-                for c in self.clients:
-                    c.updateOtherKartLocation(obj)
-            elif msg.channel == "kartDestroyed":
+            if msg.channel == "kartDestroyed":
                 if obj["id"] in self.karts:
                     self.karts[obj["id"]].kartDestroyed()
-            elif msg.channel == "requestProjectile":
-                # Make a projectile...
-                self.createProjectile(obj["position"], obj["rotation"])
-            elif msg.channel == "projectileCreated":
-                # Find the closest request
-                closest = 100000.0
-                closest_i = 0
-                for i in range(len(self.expecting_projectiles)):
-                    dx = self.expecting_projectiles[i]["x"]-obj["px"]
-                    dz = self.expecting_projectiles[i]["z"]-obj["pz"]
-                    dist = dx*dx+dz*dz
-                    if dist < closest:
-                        closest = dist
-                        closest_i = i
-                msg = messages_pb2.MsgBroadcast()
-                msg.channel = "direction_%s"%obj["id"]
-                msg.json = json.dumps({"rotation": self.expecting_projectiles[closest_i]["rot"]})
-                print "%s"%self.expecting_projectiles[closest_i]
-                self.sendMessage(0x0101, msg)
-                self.expecting_projectiles.remove(self.expecting_projectiles[closest_i])
-                pass
-            elif msg.channel == "projectileLocation":
-                for c in self.clients:
-                    c.setProjectileLocation(obj)
         pass
 
     def sendMessage(self, msgType, msg):
@@ -141,16 +120,6 @@ class WorldBox:
         msg += body
         self.socket.sendall(msg)
         pass
-
-    def createProjectile(self, pos, rot):
-        msg = messages_pb2.SpawnEntity()
-        msg.cfg_filename = "examples/karts/game_assets/projectile.json"
-        print pos
-        msg.start_position.x = pos["x"]
-        msg.start_position.y = pos["y"]+1.5
-        msg.start_position.z = pos["z"]
-        self.sendMessage(0x0201, msg)
-        self.expecting_projectiles.append({"x": pos["x"], "z": pos["z"], "rot": rot})
 
     def addClient(self, cb):
         msg = messages_pb2.SpawnEntity()
@@ -188,18 +157,24 @@ class GameWebSocket(websocket.WebSocketHandler):
         worldbox.addClient(self)
         pass
 
-    def updateKartLocation(self, kart_location):
+    def protobufpos2json(self, kloc):
+        return {"id": str(kloc.id), "position": {"x": kloc.position.x, "y": kloc.position.y, "z": kloc.position.z}, "rotation": {"x": kloc.rotation.x, "y": kloc.rotation.y, "z": kloc.rotation.z}}
+
+    def updateKartLocation(self, kloc):
         # Forward that on...
+        kart_location = self.protobufpos2json(kloc)
         kart_location["type"] = "my_loc"
         self.write_message(json.dumps(kart_location))
         pass
 
-    def updateOtherKartLocation(self, obj):
+    def updateOtherKartLocation(self, kloc):
+        obj = self.protobufpos2json(kloc)
         obj["type"] = "other_loc"
         self.write_message(json.dumps(obj))
         pass
 
-    def setProjectileLocation(self, obj):
+    def setProjectileLocation(self, kloc):
+        obj = self.protobufpos2json(kloc)
         obj["type"] = "proj_loc"
         self.write_message(json.dumps(obj))
 

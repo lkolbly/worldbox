@@ -1,7 +1,7 @@
 V8ROOT=/home/lane/Downloads/v8/v8
 V8LIB=$(V8ROOT)/out/x64.release/lib.target/
 
-OBJTARGETS = vec3.o entity.o main.o messaging.o
+OBJTARGETS = vec3.o entity.o main.o messaging.o net.o util.o
 PROTOTARGETS = net/messages.pb.o
 
 build: proto $(OBJTARGETS)

@@ -55,4 +55,41 @@ message SpawnEntity {
     string cfg_json = 2; // An actual JSON string
   }
   optional Vec3 start_position = 3; // Default is (0,0,0)
+  optional int64 id = 4; // A custom ID for the entity
+  optional string config_string = 5; // Passed to the new entity on creation
+}
+
+// s->c: Notify that a new entity has spawned.
+message EntitySpawned {
+  required int64 id = 1;
+  required string entity_type = 2;
+  optional Vec3 position = 3;
+}
+
+// Message type 0x02 02
+// c->s: Notify the server that we want location updates
+message GetEntityLocation {
+  required int64 id = 1;
+  optional bool recurring = 2 [default=true];
+  optional float period = 3 [default=0.0]; // How often...
+  optional bool include_position = 4 [default=true];
+  optional bool include_rotation = 5 [default=true];
+}
+
+// s->c: An entity location update
+message EntityLocation {
+  required int64 id = 1;
+  optional Vec3 position = 2;
+  optional Vec3 rotation = 3;
+}
+
+// Message type 0x02 03
+// c->s: Set a control
+message SetControlValue {
+  required int64 entity_id = 1;
+  required string control_id = 2;
+  oneof value {
+    double val_double = 3;
+    int32 val_int32 = 4;
+  }
 }

@@ -28,6 +28,7 @@ public:
   void Set(worldbox::Vec3 v);
   void Set(btVector3 v);
   btVector3 ToBtVec();
+  void ToProtobuf(worldbox::Vec3& v);
 
   Vec3 operator*(double scalar);
 };

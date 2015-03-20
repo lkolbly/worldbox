@@ -1,4 +1,5 @@
 {
+    "entityType": "terrain",
     "scriptFilename": "examples/karts/game_assets/terrain.js",
     "physics": {
 	"shape": [
