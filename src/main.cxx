@@ -50,10 +50,6 @@ void Print(const v8::FunctionCallbackInfo<v8::Value>& args) {
   fflush(stdout);
 }
 
-/*void globalEntityGetter(Local<String> property, const PropertyCallbackInfo<Value>& info) {
-  info.GetReturnValue().Set(curesc->v8entity);
-}*/
-
 Vec3 ParseVec3Json(const rapidjson::Value& e) {
   Vec3 v;
   v.SetXYZ(e["x"].GetDouble(), e["y"].GetDouble(), e["z"].GetDouble());
@@ -120,6 +116,15 @@ void NotifyOfSpawnedEntity(std::string config_str, int64_t id, Vec3 pos) {
   std::string str;
   msg.SerializeToString(&str);
   net.SendMessageToAll(0x0201, str);
+}
+
+void NotifyOfDeletedEntity(int64_t id) {
+  worldbox::RemoveEntity msg;
+  msg.set_entity_id(id);
+
+  std::string str;
+  msg.SerializeToString(&str);
+  net.SendMessageToAll(0x0204, str);
 }
 
 // filename is the filename of the JS file that runs the entity
@@ -224,6 +229,14 @@ void SpawnEntity(std::string config_str, Vec3 position, int64_t id, std::string 
   NotifyOfSpawnedEntity(std::string(entity_type), id, position);
 }
 
+EntitySpawnContext *GetEntitySpawnContextById(int64_t id) {
+  for (unsigned int i=0; i<esc_List.size(); i++) {
+    EntitySpawnContext *esc = esc_List[i];
+    if (esc->entity->_id == id) return esc;
+  }
+  return NULL;
+}
+
 Entity *GetEntityById(int64_t id) {
   for (unsigned int i=0; i<esc_List.size(); i++) {
     EntitySpawnContext *esc = esc_List[i];
@@ -233,6 +246,15 @@ Entity *GetEntityById(int64_t id) {
 }
 
 void DeleteEntity(EntitySpawnContext *esc) {
+  // Notify everyone that the entity's deleted
+  NotifyOfDeletedEntity(esc->entity->_id);
+  for (std::vector<EntitySpawnContext*>::iterator it=esc_List.begin(); it!=esc_List.end(); ++it) {
+    if (esc->entity->_id == (*it)->entity->_id) {
+      esc_List.erase(it);
+      break;
+    }
+  }
+
   // Delete all of bullet's things...
   physics_world->removeRigidBody(esc->entity->_rigidBody);
   delete esc->entity->_motionState;
@@ -252,6 +274,13 @@ void DeleteEntity(EntitySpawnContext *esc) {
   // Remove our bookkeeping structures...
   delete esc->entity;
   delete esc;
+}
+
+void DeleteEntityById(int64_t id) {
+  EntitySpawnContext *esc = GetEntitySpawnContextById(id);
+  if (esc) {
+    DeleteEntity(esc);
+  }
 }
 
 class myv8FileOutputStream : public OutputStream {
@@ -348,10 +377,10 @@ int main(int argc, char **argv)
 	}
 
 	if (curesc->entity->_toremove) {
-	  // TODO: Clear all the persistent stuff...
 	  printf("Removing entity...\n");
+
+	  // DeleteEntity removes the element from esc_List...
 	  DeleteEntity(curesc);
-	  it = esc_List.erase(it);
 	} else {
 	  ++it;
 	}

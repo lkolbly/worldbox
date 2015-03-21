@@ -93,3 +93,9 @@ message SetControlValue {
     int32 val_int32 = 4;
   }
 }
+// Message type 0x02 04
+// c->s: Request entity be removed.
+// s->c: Entity destroyed.
+message RemoveEntity {
+  required int64 entity_id = 1;
+}

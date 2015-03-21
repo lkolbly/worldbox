@@ -14,13 +14,8 @@ entity.subscribe("controls_"+entity.id, function(msg) {
     }
 });
 
-entity.subscribe("kill_"+entity.id, function(msg) {
-    entity.markForRemoval();
-});
-
 entity.setCallback("update", function(dt) {
     if (entity.position.y < -10.0) {
-	entity.broadcast("kartDestroyed", {id: entity.id});
 	entity.markForRemoval();
 	return;
     }

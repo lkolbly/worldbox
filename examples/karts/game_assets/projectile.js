@@ -16,7 +16,6 @@ entity.applyForce(force_v.x, force_v.y, force_v.z, 0.0, 0.0, 0.0);
 
 entity.setCallback("update", function(dt) {
     if (entity.position.y < -10.0) {
-	entity.broadcast("projectileDestroyed", {id: entity.id});
 	entity.markForRemoval();
 	return;
     }

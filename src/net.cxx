@@ -15,6 +15,7 @@ using namespace v8;
 extern btDiscreteDynamicsWorld *physics_world;
 void SpawnEntity(std::string config_str, Vec3 position, int64_t id, std::string init_cfg_str, Isolate *isolate);
 Entity *GetEntityById(int64_t id);
+void DeleteEntityById(int64_t id);
 
 void NetClient::SendMessage(int type, std::string message) {
   unsigned short msgsize=htons(message.length()), msgtype=htons(type);
@@ -187,6 +188,12 @@ void NetClient::update(double dt)
 	Entity *entity = GetEntityById(id);
 	SendLocationUpdate(entity, msg);
       }
+    } else if (msgtype == 0x0204) {
+      // RemoveEntity
+      worldbox::RemoveEntity msg;
+      msg.ParseFromArray(buf, msgsize);
+      int64_t id = msg.entity_id();
+      DeleteEntityById(id);
     }
 
     delete buf;

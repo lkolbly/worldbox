@@ -39,18 +39,6 @@ class WorldBox:
         msg.physics_gravity.z = 0.0
         self.sendMessage(0x02, msg)
 
-        msg = messages_pb2.MsgSubscribe()
-        msg.channel = "kartDestroyed"
-        self.sendMessage(0x0102, msg)
-
-        msg = messages_pb2.MsgSubscribe()
-        msg.channel = "requestProjectile"
-        self.sendMessage(0x0102, msg)
-
-        msg = messages_pb2.MsgSubscribe()
-        msg.channel = "projectileDestroyed"
-        self.sendMessage(0x0102, msg)
-
         msg = messages_pb2.SpawnEntity()
         msg.cfg_filename = "examples/karts/game_assets/terrain.json"
         self.sendMessage(0x0201, msg)
@@ -105,13 +93,11 @@ class WorldBox:
             else: # It must be a projectile
                 for c in self.clients:
                     c.setProjectileLocation(msg)
-        if msg_type == 0x0101:
-            msg = messages_pb2.MsgBroadcast()
+        if msg_type == 0x0204:
+            msg = messages_pb2.RemoveEntity()
             msg.ParseFromString(body)
-            obj = json.loads(msg.json)
-            if msg.channel == "kartDestroyed":
-                if obj["id"] in self.karts:
-                    self.karts[obj["id"]].kartDestroyed()
+            if str(msg.entity_id) in self.karts:
+                self.karts[str(msg.entity_id)].kartDestroyed()
         pass
 
     def sendMessage(self, msgType, msg):
@@ -132,10 +118,11 @@ class WorldBox:
         pass
 
     def removeEntity(self, eid):
-        msg = messages_pb2.MsgBroadcast()
-        msg.channel = "kill_%s"%eid
-        msg.json = ""
-        self.sendMessage(0x0101, msg)
+        msg = messages_pb2.RemoveEntity()
+        print eid
+        print int(eid)
+        msg.entity_id = int(eid)
+        self.sendMessage(0x0204, msg)
 
 worldbox = None
 
@@ -160,23 +147,29 @@ class GameWebSocket(websocket.WebSocketHandler):
     def protobufpos2json(self, kloc):
         return {"id": str(kloc.id), "position": {"x": kloc.position.x, "y": kloc.position.y, "z": kloc.position.z}, "rotation": {"x": kloc.rotation.x, "y": kloc.rotation.y, "z": kloc.rotation.z}}
 
+    def write_obj(self, obj):
+        try:
+            self.write_message(json.dumps(obj))
+        except:
+            pass
+
     def updateKartLocation(self, kloc):
         # Forward that on...
         kart_location = self.protobufpos2json(kloc)
         kart_location["type"] = "my_loc"
-        self.write_message(json.dumps(kart_location))
+        self.write_obj(kart_location)
         pass
 
     def updateOtherKartLocation(self, kloc):
         obj = self.protobufpos2json(kloc)
         obj["type"] = "other_loc"
-        self.write_message(json.dumps(obj))
+        self.write_obj(obj)
         pass
 
     def setProjectileLocation(self, kloc):
         obj = self.protobufpos2json(kloc)
         obj["type"] = "proj_loc"
-        self.write_message(json.dumps(obj))
+        self.write_obj(obj)
 
     def on_message(self, message):
         message = json.loads(message)
